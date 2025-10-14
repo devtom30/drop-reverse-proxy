@@ -124,4 +124,18 @@ mod tests {
         assert!(header_map.get(TOKEN_NAME).is_some());
         assert_eq!(header_map.get(TOKEN_NAME).unwrap(), "thetoken");
     }
+
+    #[tokio::test]
+    async fn get_tag_error() {
+        let app = app();
+
+        // `Router` implements `tower::Service<Request<Body>>` so we can
+        // call it like any tower service, no need to run an HTTP server.
+        let response = app
+            .oneshot(Request::builder().uri("/tag/tagUnknown").body(Empty::new()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }
