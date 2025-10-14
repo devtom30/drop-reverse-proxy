@@ -53,11 +53,15 @@ impl IntoResponse for AppError {
 async fn tag(
     Path(tag): Path<String>
 ) -> Result<(StatusCode, HeaderMap), AppError> {
-    extract_tag_from_path(tag.as_str()).ok_or(AppError::TagNotFound);
+    if let Some(tag_extracted) = extract_tag_from_path(tag.as_str()) {
+        if check_tag(tag_extracted.as_str()) {
+            let mut headers = HeaderMap::new();
+            headers.insert(TOKEN_NAME, "thetoken".parse().unwrap());
+            return Ok((StatusCode::OK, headers))
+        }
+    }
 
-    let mut headers = HeaderMap::new();
-    headers.insert(TOKEN_NAME, "thetoken".parse().unwrap());
-    Ok((StatusCode::OK, headers))
+    Err(AppError::TagNotFound)
 }
 
 async fn tag_layer(
@@ -68,9 +72,13 @@ async fn tag_layer(
 
 }
 
+fn check_tag(tag: &str) -> bool {
+    TAG_LIST.contains(&tag)
+}
+
 fn extract_tag_from_path(uri_path: &str) -> Option<String> {
     println!("match in {uri_path} ? ");
-    let re = Regex::new(r"^/tag/(?<tag>[^/]+)/?$").unwrap();
+    let re = Regex::new(r"([^/]+)/?$").unwrap();
     if let Some(caps) = re.captures(uri_path) {
         let str = caps.get(1).unwrap().as_str().to_string();
         println!("match");
