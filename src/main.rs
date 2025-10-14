@@ -1,9 +1,15 @@
-use axum::{Router, routing::get};
+use axum::{Router, routing::get, middleware, Error};
+use axum::extract::{Path, Request};
 use axum::http::{HeaderMap, StatusCode};
 use axum::http::response::Builder;
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use regex::Regex;
+use serde::Serialize;
 
 const TOKEN_NAME: &str = "dop_token";
+
+const TAG_LIST: [&str; 3] = ["tag1", "tag2", "tag3"];
 
 #[tokio::main]
 async fn main() {
@@ -13,16 +19,66 @@ async fn main() {
 
 fn app() -> Router {
     Router::new()
-        .route("/tag", get(tag)) //.layer(tag_layer)
+        .route("/tag/{tag}", get(tag))
         .route("/play", get(play))//.layer(play_layer)
         .route("/{*path}", get(file))//.layer(file_layer)
 
 }
 
-async fn tag() -> impl IntoResponse {
+#[derive(Debug)]
+enum AppError {
+    TagNotFound
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        // How we want errors responses to be serialized
+        #[derive(Serialize)]
+        struct ErrorResponse {
+            message: String,
+        }
+
+        match &self {
+            AppError::TagNotFound => {
+                // While we could simply log the error here we would introduce
+                // a side-effect to our conversion, instead add the AppError to
+                // the Response as an Extension
+                // Don't expose any details about the error to the client
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        }
+    }
+}
+
+async fn tag(
+    Path(tag): Path<String>
+) -> Result<(StatusCode, HeaderMap), AppError> {
+    extract_tag_from_path(tag.as_str()).ok_or(AppError::TagNotFound);
+
     let mut headers = HeaderMap::new();
     headers.insert(TOKEN_NAME, "thetoken".parse().unwrap());
-    (StatusCode::OK, headers)
+    Ok((StatusCode::OK, headers))
+}
+
+async fn tag_layer(
+    path: Path<String>,
+    request: Request,
+    next: Next
+) {
+
+}
+
+fn extract_tag_from_path(uri_path: &str) -> Option<String> {
+    println!("match in {uri_path} ? ");
+    let re = Regex::new(r"^/tag/(?<tag>[^/]+)/?$").unwrap();
+    if let Some(caps) = re.captures(uri_path) {
+        let str = caps.get(1).unwrap().as_str().to_string();
+        println!("match");
+        Some(str)
+    } else {
+        println!("no match!");
+        None
+    }
 }
 
 async fn play() {}
@@ -50,7 +106,7 @@ mod tests {
         // `Router` implements `tower::Service<Request<Body>>` so we can
         // call it like any tower service, no need to run an HTTP server.
         let response = app
-            .oneshot(Request::builder().uri("/tag").body(Empty::new()).unwrap())
+            .oneshot(Request::builder().uri("/tag/tag1").body(Empty::new()).unwrap())
             .await
             .unwrap();
 
