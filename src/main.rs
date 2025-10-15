@@ -1,11 +1,15 @@
-use axum::{Router, routing::get, middleware, Error};
-use axum::extract::{Path, Request};
+use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::http::response::Builder;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use axum::{routing::get, Router};
+use chrono::{NaiveDateTime};
 use regex::Regex;
-use serde::Serialize;
+use serde::{Serialize, Serializer};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use serde::ser::SerializeStruct;
+use uuid::Uuid;
 
 const TOKEN_NAME: &str = "dop_token";
 
@@ -14,15 +18,19 @@ const TAG_LIST: [&str; 3] = ["tag1", "tag2", "tag3"];
 #[tokio::main]
 async fn main() {
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app()).await.unwrap();
+    let token_repo = InMemoryTokenRepo::default();
+    let app_state = AppState {
+        token_repo: Arc::new(token_repo.clone()),
+    };
+    axum::serve(listener, app(app_state)).await.unwrap();
 }
 
-fn app() -> Router {
+fn app(state: AppState) -> Router {
     Router::new()
         .route("/tag/{tag}", get(tag))
         .route("/play", get(play))//.layer(play_layer)
         .route("/{*path}", get(file))//.layer(file_layer)
-
+        .with_state(state)
 }
 
 #[derive(Debug)]
@@ -50,13 +58,48 @@ impl IntoResponse for AppError {
     }
 }
 
+#[derive(Debug, Clone)]
+struct Token {
+    id: Uuid,
+    create_date: NaiveDateTime,
+    tag: String
+}
+
+impl Serialize for Token {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // 3 is the number of fields in the struct.
+        let mut state = serializer.serialize_struct("Token", 3)?;
+        state.serialize_field("id", &self.id.to_string())?;
+        state.serialize_field("create_date", &self.create_date.to_string())?;
+        state.serialize_field("tag", &self.tag)?;
+        state.end()
+    }
+}
+
+#[derive(Clone)]
+struct AppState {
+    token_repo: Arc<dyn TokenRepo>,
+}
+
 async fn tag(
+    State(state): State<AppState>,
     Path(tag): Path<String>
 ) -> Result<(StatusCode, HeaderMap), AppError> {
     if let Some(tag_extracted) = extract_tag_from_path(tag.as_str()) {
         if check_tag(tag_extracted.as_str()) {
+            let uuid = Uuid::new_v4();
+
             let mut headers = HeaderMap::new();
-            headers.insert(TOKEN_NAME, "thetoken".parse().unwrap());
+            headers.insert(TOKEN_NAME, uuid.to_string().parse().unwrap());
+
+            state.token_repo.save_token(&Token {
+                id: uuid,
+                create_date: NaiveDateTime::default(),
+                tag: tag_extracted,
+            });
             return Ok((StatusCode::OK, headers))
         }
     }
@@ -70,6 +113,14 @@ async fn tag_layer(
     next: Next
 ) {
 
+}
+
+fn check_token(
+    path: Path<String>,
+    request: Request,
+    next: Next
+) {
+    request.headers();
 }
 
 fn check_tag(tag: &str) -> bool {
@@ -93,23 +144,44 @@ async fn play() {}
 
 async fn file() {}
 
+trait TokenRepo: Send + Sync {
+    fn get_token(&self, id: Uuid) -> Option<Token>;
+
+    fn save_token(&self, token: &Token);
+}
+
+#[derive(Debug, Clone, Default)]
+struct InMemoryTokenRepo {
+    map: Arc<Mutex<HashMap<Uuid, Token>>>,
+}
+
+impl TokenRepo for InMemoryTokenRepo {
+    fn get_token(&self, id: Uuid) -> Option<Token> {
+        self.map.lock().unwrap().get(&id).cloned()
+    }
+
+    fn save_token(&self, token: &Token) {
+        self.map.lock().unwrap().insert(token.id, token.clone());
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
     use super::*;
-    use axum::{
-        body::Body,
-        extract::connect_info::MockConnectInfo,
-        http::{self, Request, StatusCode},
-    };
-    use http_body_util::{BodyExt, Empty}; // for `collect`
-    use serde_json::{json, Value};
-    use tokio::net::TcpListener;
-    use tower::{Service, ServiceExt}; // for `call`, `oneshot`, and `ready`
+    use axum::http::{Request, StatusCode};
+    use http_body_util::Empty;
+    use tower::ServiceExt;
+    // for `call`, `oneshot`, and `ready`
 
     #[tokio::test]
     async fn get_tag() {
-        let app = app();
+        let token_repo = InMemoryTokenRepo::default();
+        let app_state = AppState {
+            token_repo: Arc::new(token_repo.clone())
+        };
+        let app = app(app_state.clone());
 
         // `Router` implements `tower::Service<Request<Body>>` so we can
         // call it like any tower service, no need to run an HTTP server.
@@ -122,12 +194,18 @@ mod tests {
 
         let header_map = response.headers();
         assert!(header_map.get(TOKEN_NAME).is_some());
-        assert_eq!(header_map.get(TOKEN_NAME).unwrap(), "thetoken");
+
+        let token = app_state.token_repo.get_token(Uuid::from_str(header_map.get(TOKEN_NAME).unwrap().to_str().unwrap()).unwrap());
+        assert!(token.is_some());
     }
 
     #[tokio::test]
     async fn get_tag_error() {
-        let app = app();
+        let token_repo = InMemoryTokenRepo::default();
+        let app_state = AppState {
+            token_repo: Arc::new(token_repo.clone())
+        };
+        let app = app(app_state);
 
         // `Router` implements `tower::Service<Request<Body>>` so we can
         // call it like any tower service, no need to run an HTTP server.
