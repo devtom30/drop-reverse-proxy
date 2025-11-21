@@ -11,6 +11,7 @@ use serde::{Serialize, Serializer};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
+use redis::Commands;
 
 pub const TOKEN_NAME: &str = "dop_token";
 
@@ -142,6 +143,25 @@ pub struct InMemoryTokenRepo {
     map: Arc<Mutex<HashMap<Uuid, Token>>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct TokenRepoDB {
+    client: redis::Client,
+}
+
+impl Default for TokenRepoDB {
+    fn default() -> Self {
+        let client = redis::Client::open("redis://127.0.0.1/")
+            .expect("failed to create redis client");
+        Self { client }
+    }
+}
+
+impl TokenRepoDB {
+    pub fn new(redis_url: &str) -> redis::RedisResult<Self> {
+        Ok(Self { client: redis::Client::open(redis_url)? })
+    }
+}
+
 impl TokenRepo for InMemoryTokenRepo {
     fn get_token(&self, id: Uuid) -> Option<Token> {
         self.map.lock().unwrap().get(&id).cloned()
@@ -149,5 +169,43 @@ impl TokenRepo for InMemoryTokenRepo {
 
     fn save_token(&self, token: &Token) {
         self.map.lock().unwrap().insert(token.id, token.clone());
+    }
+}
+
+impl TokenRepo for TokenRepoDB {
+    fn get_token(&self, id: Uuid) -> Option<Token> {
+        let mut conn = match self.client.get_connection() {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
+        let key = format!("token:{}", id);
+        let id_s: Option<String> = conn.hget(&key, "id").ok();
+        let tag: Option<String> = conn.hget(&key, "tag").ok();
+        let create_date_s: Option<String> = conn.hget(&key, "create_date").ok();
+
+        match (id_s, tag, create_date_s) {
+            (Some(id_str), Some(tag), Some(cd_str)) => {
+                if id_str != id.to_string() {
+                    return None;
+                }
+                let create_date = chrono::NaiveDateTime::parse_from_str(&cd_str, "%Y-%m-%d %H:%M:%S").ok()?;
+                Some(Token { id, create_date, tag })
+            }
+            _ => None,
+        }
+    }
+
+    fn save_token(&self, token: &Token) {
+        if let Ok(mut conn) = self.client.get_connection() {
+            let key = format!("token:{}", token.id);
+            let _: redis::RedisResult<()> = conn.hset_multiple(
+                &key,
+                &[
+                    ("id", token.id.to_string()),
+                    ("create_date", token.create_date.format("%Y-%m-%d %H:%M:%S").to_string()),
+                    ("tag", token.tag.clone()),
+                ],
+            );
+        }
     }
 }
