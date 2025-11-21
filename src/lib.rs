@@ -19,7 +19,10 @@ const TAG_LIST: [&str; 3] = ["tag1", "tag2", "tag3"];
 
 pub fn app(state: AppState) -> Router {
     Router::new()
-        .route("/tag/{tag}", get(tag))
+        .route(
+            "/tag/{tag}",
+            get(tag).route_layer(axum::middleware::from_fn(tag_guard)),
+        )
         .route("/play", get(play))//.layer(play_layer)
         .route("/{*path}", get(file))//.layer(file_layer)
         .with_state(state)
@@ -95,21 +98,19 @@ async fn tag(
     Err(AppError::TagNotFound)
 }
 
-async fn tag_layer(
-    path: Path<String>,
-    request: Request,
-    next: Next
-) {
-
+// Route guard for /tag that validates the requested tag is allowed
+async fn tag_guard(req: Request, next: Next) -> Response {
+    let path = req.uri().path();
+    if let Some(tag) = extract_tag_from_path(path) {
+        if check_tag(tag.as_str()) {
+            return next.run(req).await;
+        }
+    }
+    AppError::TagNotFound.into_response()
 }
 
-fn check_token(
-    path: Path<String>,
-    request: Request,
-    next: Next
-) {
-    request.headers();
-}
+// Placeholder for future token checks
+fn check_token(_path: Path<String>, _request: Request, _next: Next) {}
 
 fn check_tag(tag: &str) -> bool {
     TAG_LIST.contains(&tag)

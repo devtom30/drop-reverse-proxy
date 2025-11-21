@@ -52,6 +52,31 @@ async fn get_tag_error() {
 }
 
 #[tokio::test]
+async fn tag_not_in_list_returns_500_and_no_token_header() {
+    // Arrange: use in-memory repo
+    let token_repo = InMemoryTokenRepo::default();
+    let app_state = AppState {
+        token_repo: Arc::new(token_repo.clone()),
+    };
+    let app = app(app_state);
+
+    // Act: request a tag that is not in the allowed list
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/tag/not-allowed-tag")
+                .body(Empty::new())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    // Assert: 500 returned by the guard/handler and no token header set
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(response.headers().get(TOKEN_NAME).is_none());
+}
+
+#[tokio::test]
 async fn save_and_get_token_from_repo() {
     // Arrange: app with in-memory repo
     let token_repo = InMemoryTokenRepo::default();
