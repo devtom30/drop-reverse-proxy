@@ -36,11 +36,6 @@ enum AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         // How we want errors responses to be serialized
-        #[derive(Serialize)]
-        struct ErrorResponse {
-            message: String,
-        }
-
         match &self {
             AppError::TagNotFound => {
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -152,7 +147,7 @@ pub struct TokenRepoDB {
 impl Default for TokenRepoDB {
     fn default() -> Self {
         let client = redis::Client::open("redis://127.0.0.1/")
-            .expect("failed to create redis client");
+            .expect("failed to create a redis client");
         Self { client }
     }
 }
