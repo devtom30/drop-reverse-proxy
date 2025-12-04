@@ -1,5 +1,5 @@
 use axum::http::{Request, StatusCode};
-use drop_reverse_proxy::{app, AppState, InMemoryTokenRepo, TokenRepoDB, TOKEN_NAME};
+use drop_reverse_proxy::{app, AppState, InMemoryTokenRepo, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
 use http_body_util::Empty;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -7,6 +7,7 @@ use tower::ServiceExt;
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
+use chrono::NaiveDateTime;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -216,4 +217,58 @@ async fn save_and_get_token_from_db() {
     let json = serde_json::to_value(&token).unwrap();
     assert_eq!(json.get("id").and_then(|v| v.as_str()), Some(token_id.to_string().as_str()));
     assert_eq!(json.get("tag").and_then(|v| v.as_str()), Some("tag2"));
+}
+
+#[tokio::test]
+async fn get_play_is_authorized_token() {
+    let token_repo = InMemoryTokenRepo::default();
+    let token_uuid_valid = Uuid::new_v4();
+    let tag_ok = "tag1";
+    let token = Token::new(
+        token_uuid_valid,
+        NaiveDateTime::default(),
+        tag_ok.to_string()
+    );
+    token_repo.save_token(&token);
+    let app_state = AppState {
+        token_repo: Arc::new(token_repo.clone())
+    };
+    let app = app(app_state.clone());
+
+    // `Router` implements `tower::Service<Request<Body>>` so we can
+    // call it like any tower service, no need to run an HTTP server.
+    let response = app
+        .oneshot(Request::builder()
+            .header(TOKEN_NAME, token_uuid_valid.to_string())
+            .uri("/play")
+            .body(Empty::new())
+            .unwrap()
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn get_play_is_not_authorized_token() {
+    let token_repo = InMemoryTokenRepo::default();
+    let app_state = AppState {
+        token_repo: Arc::new(token_repo.clone())
+    };
+    let app = app(app_state.clone());
+
+    // `Router` implements `tower::Service<Request<Body>>` so we can
+    // call it like any tower service, no need to run an HTTP server.
+    let response = app
+        .oneshot(Request::builder()
+            .header(TOKEN_NAME, "dummy token")
+            .uri("/play")
+            .body(Empty::new())
+            .unwrap()
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }

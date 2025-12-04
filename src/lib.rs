@@ -5,13 +5,14 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
 use chrono::NaiveDateTime;
+use derive_new::new;
+use redis::Commands;
 use regex::Regex;
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
-use redis::Commands;
 
 pub const TOKEN_NAME: &str = "dop_token";
 
@@ -23,28 +24,34 @@ pub fn app(state: AppState) -> Router {
             "/tag/{tag}",
             get(tag).route_layer(axum::middleware::from_fn(tag_guard)),
         )
-        .route("/play", get(play))//.layer(play_layer)
-        .route("/{*path}", get(file))//.layer(file_layer)
+        .route(
+            "/play",
+            get(play).layer(axum::middleware::from_fn_with_state(state.clone(), token_guard))
+        )
+        .route(
+            "/{*path}",
+            get(file).route_layer(axum::middleware::from_fn_with_state(state.clone(), token_guard))
+        )
         .with_state(state)
 }
 
 #[derive(Debug)]
 enum AppError {
-    TagNotFound
+    TagNotFound,
+    Unauthorized,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         // How we want errors responses to be serialized
         match &self {
-            AppError::TagNotFound => {
-                StatusCode::INTERNAL_SERVER_ERROR.into_response()
-            }
+            AppError::TagNotFound => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            AppError::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, new)]
 pub struct Token {
     id: Uuid,
     create_date: NaiveDateTime,
@@ -105,7 +112,23 @@ async fn tag_guard(req: Request, next: Next) -> Response {
 }
 
 // Placeholder for future token checks
-fn check_token(_path: Path<String>, _request: Request, _next: Next) {}
+async fn token_guard(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next
+) -> Response {
+    let headers = req.headers().clone();
+    if let Some(header_token) = headers.get(TOKEN_NAME) {
+        if let Ok(header_token_str) = header_token.to_str() {
+            if let Ok(token_uuid_requested) = Uuid::parse_str(header_token_str) {
+                if let Some(_token) = state.token_repo.get_token(token_uuid_requested) {
+                    return next.run(req).await;
+                }
+            }
+        }
+    }
+    AppError::Unauthorized.into_response()
+}
 
 fn check_tag(tag: &str) -> bool {
     TAG_LIST.contains(&tag)
@@ -124,7 +147,9 @@ fn extract_tag_from_path(uri_path: &str) -> Option<String> {
     }
 }
 
-async fn play() {}
+async fn play() -> Result<StatusCode, AppError> {
+    Ok(StatusCode::OK)
+}
 
 async fn file() {}
 
