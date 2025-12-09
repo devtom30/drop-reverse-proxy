@@ -1,6 +1,6 @@
 use axum::http::{Request, StatusCode};
 use chrono::NaiveDateTime;
-use drop_reverse_proxy::{app, AppState, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
+use drop_reverse_proxy::{app, AppState, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo, TagRepoDB, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
 use http_body_util::Empty;
 use std::process::Command;
 use std::str::FromStr;
@@ -15,6 +15,14 @@ fn init_in_memory_tag_repo() -> InMemoryTagRepo {
     ["tag1", "tag2", "tag3"].iter()
         .for_each(|t| tag_repo.save(&Tag::new(t.to_string(), NaiveDateTime::default())));
     tag_repo
+}
+
+fn init_redis_tag_repo(redis_url: &String) -> Result<TagRepoDB, redis::RedisError> {
+    let tag_repo_db = TagRepoDB::new(redis_url)?;
+    tag_repo_db.save(&Tag::new("tag1".to_string(), NaiveDateTime::default()));
+    tag_repo_db.save(&Tag::new("tag2".to_string(), NaiveDateTime::default()));
+    tag_repo_db.save(&Tag::new("tag3".to_string(), NaiveDateTime::default()));
+    Ok(tag_repo_db)
 }
 
 #[tokio::test]
@@ -212,10 +220,10 @@ async fn save_and_get_token_from_db() {
 
     // Arrange: app with Redis-backed repo pointing to the container
     let token_repo = TokenRepoDB::new(&redis_url).expect("failed to create TokenRepoDB");
-    let tag_repo = init_in_memory_tag_repo();
+    let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
-        tag_repo: Arc::new(tag_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone())
     };
     let app = app(app_state.clone());
 
