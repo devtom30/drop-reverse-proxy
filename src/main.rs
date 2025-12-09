@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use drop_reverse_proxy::{app, AppState, InMemoryTagRepo, InMemoryTokenRepo};
 use std::sync::Arc;
 
@@ -10,5 +11,8 @@ async fn main() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
     };
-    axum::serve(listener, app(app_state)).await.unwrap();
+    axum::serve(
+        listener,
+        app(app_state).into_make_service_with_connect_info::<SocketAddr>()
+    ).await.unwrap();
 }

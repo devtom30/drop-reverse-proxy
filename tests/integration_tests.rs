@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use axum::http::{Request, StatusCode};
 use chrono::NaiveDateTime;
 use drop_reverse_proxy::{app, AppState, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo, TagRepoDB, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
@@ -7,6 +8,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use axum::extract::ConnectInfo;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -36,11 +38,14 @@ async fn get_tag() {
     let app = app(app_state.clone());
 
     // `Router` implements `tower::Service<Request<Body>>` so we can
-    // call it like any tower service, no need to run an HTTP server.
-    let response = app
-        .oneshot(Request::builder().uri("/tag/tag1").body(Empty::new()).unwrap())
-        .await
+    // call it like any tower service, no need to run an HTTP server
+
+    let mut req = Request::builder()
+        .uri("/tag/tag1")
+        .body(Empty::new())
         .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
+    let response = app.oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -110,10 +115,12 @@ async fn save_and_get_token_from_repo() {
     let app = app(app_state.clone());
 
     // Act: call the endpoint that saves a token with tag2
-    let response = app
-        .oneshot(Request::builder().uri("/tag/tag2").body(Empty::new()).unwrap())
-        .await
+    let mut req = Request::builder()
+        .uri("/tag/tag2")
+        .body(Empty::new())
         .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
+    let response = app.oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
 
@@ -228,10 +235,12 @@ async fn save_and_get_token_from_db() {
     let app = app(app_state.clone());
 
     // Act: call the endpoint that saves a token with tag2
-    let response = app
-        .oneshot(Request::builder().uri("/tag/tag2").body(Empty::new()).unwrap())
-        .await
+let mut req = Request::builder()
+        .uri("/tag/tag2")
+        .body(Empty::new())
         .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
+    let response = app.oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
 

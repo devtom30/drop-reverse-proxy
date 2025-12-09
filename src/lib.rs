@@ -1,4 +1,4 @@
-use axum::extract::{Path, Request, State};
+use axum::extract::{ConnectInfo, Path, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -11,6 +11,7 @@ use regex::Regex;
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
@@ -24,7 +25,7 @@ pub fn app(state: AppState) -> Router {
         )
         .route(
             "/play",
-            get(play).layer(axum::middleware::from_fn_with_state(state.clone(), token_guard))
+            get(play).route_layer(axum::middleware::from_fn_with_state(state.clone(), token_guard))
         )
         .route(
             "/{*path}",
@@ -78,7 +79,8 @@ pub struct AppState {
 
 async fn tag(
     State(state): State<AppState>,
-    Path(tag): Path<String>
+    Path(tag): Path<String>,
+    ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
 ) -> Result<(StatusCode, HeaderMap), AppError> {
     if let Some(tag_extracted) = extract_tag_from_path(tag.as_str()) {
         let uuid = Uuid::new_v4();
