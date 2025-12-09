@@ -1,20 +1,29 @@
 use axum::http::{Request, StatusCode};
-use drop_reverse_proxy::{app, AppState, InMemoryTokenRepo, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
+use chrono::NaiveDateTime;
+use drop_reverse_proxy::{app, AppState, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
 use http_body_util::Empty;
+use std::process::Command;
 use std::str::FromStr;
 use std::sync::Arc;
-use tower::ServiceExt;
-use std::process::Command;
 use std::thread;
 use std::time::Duration;
-use chrono::NaiveDateTime;
+use tower::ServiceExt;
 use uuid::Uuid;
+
+fn init_in_memory_tag_repo() -> InMemoryTagRepo {
+    let tag_repo = InMemoryTagRepo::default();
+    ["tag1", "tag2", "tag3"].iter()
+        .for_each(|t| tag_repo.save(&Tag::new(t.to_string(), NaiveDateTime::default())));
+    tag_repo
+}
 
 #[tokio::test]
 async fn get_tag() {
     let token_repo = InMemoryTokenRepo::default();
+    let tag_repo = init_in_memory_tag_repo();
     let app_state = AppState {
-        token_repo: Arc::new(token_repo.clone())
+        token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
     };
     let app = app(app_state.clone());
 
@@ -37,8 +46,10 @@ async fn get_tag() {
 #[tokio::test]
 async fn get_tag_error() {
     let token_repo = InMemoryTokenRepo::default();
+    let tag_repo = InMemoryTagRepo::default();
     let app_state = AppState {
-        token_repo: Arc::new(token_repo.clone())
+        token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
     };
     let app = app(app_state);
 
@@ -56,8 +67,10 @@ async fn get_tag_error() {
 async fn tag_not_in_list_returns_500_and_no_token_header() {
     // Arrange: use in-memory repo
     let token_repo = InMemoryTokenRepo::default();
+    let tag_repo = InMemoryTagRepo::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
     };
     let app = app(app_state);
 
@@ -81,8 +94,10 @@ async fn tag_not_in_list_returns_500_and_no_token_header() {
 async fn save_and_get_token_from_repo() {
     // Arrange: app with in-memory repo
     let token_repo = InMemoryTokenRepo::default();
+    let tag_repo = init_in_memory_tag_repo();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
     };
     let app = app(app_state.clone());
 
@@ -197,8 +212,10 @@ async fn save_and_get_token_from_db() {
 
     // Arrange: app with Redis-backed repo pointing to the container
     let token_repo = TokenRepoDB::new(&redis_url).expect("failed to create TokenRepoDB");
+    let tag_repo = init_in_memory_tag_repo();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
     };
     let app = app(app_state.clone());
 
@@ -230,6 +247,7 @@ async fn save_and_get_token_from_db() {
 #[tokio::test]
 async fn get_play_is_authorized_token() {
     let token_repo = InMemoryTokenRepo::default();
+    let tag_repo = InMemoryTagRepo::default();
     let token_uuid_valid = Uuid::new_v4();
     let tag_ok = "tag1";
     let token = Token::new(
@@ -239,7 +257,8 @@ async fn get_play_is_authorized_token() {
     );
     token_repo.save_token(&token);
     let app_state = AppState {
-        token_repo: Arc::new(token_repo.clone())
+        token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
     };
     let app = app(app_state.clone());
 
@@ -261,8 +280,10 @@ async fn get_play_is_authorized_token() {
 #[tokio::test]
 async fn get_play_is_not_authorized_token() {
     let token_repo = InMemoryTokenRepo::default();
+    let tag_repo = InMemoryTagRepo::default();
     let app_state = AppState {
-        token_repo: Arc::new(token_repo.clone())
+        token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
     };
     let app = app(app_state.clone());
 

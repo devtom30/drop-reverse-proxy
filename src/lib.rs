@@ -16,13 +16,11 @@ use uuid::Uuid;
 
 pub const TOKEN_NAME: &str = "dop_token";
 
-const TAG_LIST: [&str; 3] = ["tag1", "tag2", "tag3"];
-
 pub fn app(state: AppState) -> Router {
     Router::new()
         .route(
             "/tag/{tag}",
-            get(tag).route_layer(axum::middleware::from_fn(tag_guard)),
+            get(tag).route_layer(axum::middleware::from_fn_with_state(state.clone(), tag_guard)),
         )
         .route(
             "/play",
@@ -75,6 +73,7 @@ impl Serialize for Token {
 #[derive(Clone)]
 pub struct AppState {
     pub token_repo: Arc<dyn TokenRepo>,
+    pub tag_repo: Arc<dyn TagRepo>,
 }
 
 async fn tag(
@@ -82,29 +81,30 @@ async fn tag(
     Path(tag): Path<String>
 ) -> Result<(StatusCode, HeaderMap), AppError> {
     if let Some(tag_extracted) = extract_tag_from_path(tag.as_str()) {
-        if check_tag(tag_extracted.as_str()) {
-            let uuid = Uuid::new_v4();
+        let uuid = Uuid::new_v4();
+        let mut headers = HeaderMap::new();
+        headers.insert(TOKEN_NAME, uuid.to_string().parse().unwrap());
 
-            let mut headers = HeaderMap::new();
-            headers.insert(TOKEN_NAME, uuid.to_string().parse().unwrap());
-
-            state.token_repo.save_token(&Token {
-                id: uuid,
-                create_date: NaiveDateTime::default(),
-                tag: tag_extracted,
-            });
-            return Ok((StatusCode::OK, headers))
-        }
+        state.token_repo.save_token(&Token {
+            id: uuid,
+            create_date: NaiveDateTime::default(),
+            tag: tag_extracted,
+        });
+        return Ok((StatusCode::OK, headers))
     }
 
     Err(AppError::TagNotFound)
 }
 
 // Route guard for /tag that validates the requested tag is allowed
-async fn tag_guard(req: Request, next: Next) -> Response {
+async fn tag_guard(
+    State(state): State<AppState>,
+    req: Request,
+    next: Next
+) -> Response {
     let path = req.uri().path();
     if let Some(tag) = extract_tag_from_path(path) {
-        if check_tag(tag.as_str()) {
+        if check_tag(tag.as_str(), state.tag_repo) {
             return next.run(req).await;
         }
     }
@@ -130,8 +130,8 @@ async fn token_guard(
     AppError::Unauthorized.into_response()
 }
 
-fn check_tag(tag: &str) -> bool {
-    TAG_LIST.contains(&tag)
+fn check_tag(tag: &str, tag_repo: Arc<dyn TagRepo>) -> bool {
+    tag_repo.get(tag.to_string()).is_some()
 }
 
 fn extract_tag_from_path(uri_path: &str) -> Option<String> {
@@ -225,6 +225,91 @@ impl TokenRepo for TokenRepoDB {
                     ("id", token.id.to_string()),
                     ("create_date", token.create_date.format("%Y-%m-%d %H:%M:%S").to_string()),
                     ("tag", token.tag.clone()),
+                ],
+            );
+        }
+    }
+}
+
+pub trait TagRepo: Send + Sync {
+    fn get(&self, tag: String) -> Option<Tag>;
+
+    fn save(&self, tag: &Tag);
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryTagRepo {
+    map: Arc<Mutex<HashMap<String, Tag>>>,
+}
+
+impl TagRepo for InMemoryTagRepo {
+    fn get(&self, name: String) -> Option<Tag> {
+        self.map.lock().unwrap().get(&name).cloned()
+    }
+
+    fn save(&self, tag: &Tag) {
+        self.map.lock().unwrap().insert(tag.id.clone(), tag.clone());
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TagRepoDB {
+    client: redis::Client,
+}
+
+impl Default for TagRepoDB {
+    fn default() -> Self {
+        let client = create_redis_client();
+        Self { client }
+    }
+}
+
+fn create_redis_client() -> redis::Client {
+    redis::Client::open("redis://127.0.0.1/")
+        .expect("failed to create a redis client")
+}
+
+impl TagRepoDB {
+    pub fn new(redis_url: &str) -> redis::RedisResult<Self> {
+        Ok(Self { client: redis::Client::open(redis_url)? })
+    }
+}
+
+#[derive(Debug, Clone, new)]
+pub struct Tag {
+    id: String,
+    create_date: NaiveDateTime,
+}
+
+impl TagRepo for TagRepoDB {
+    fn get(&self, tag: String) -> Option<Tag> {
+        let mut conn = match self.client.get_connection() {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
+        let key = format!("tag:{}", tag);
+        let create_date_s: Option<String> = conn.hget(&key, "create_date").ok();
+
+        match create_date_s {
+            Some(cd_str) => {
+                let create_date = chrono::NaiveDateTime::parse_from_str(&cd_str, "%Y-%m-%d %H:%M:%S").ok()?;
+                Some(Tag {
+                    id: tag,
+                    create_date,
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn save(&self, tag: &Tag) {
+        if let Ok(mut conn) = self.client.get_connection() {
+            let key = format!("tag:{}", tag.id.clone());
+            let _: redis::RedisResult<()> = conn.hset_multiple(
+                &key,
+                &[
+                    ("id", tag.id.clone()),
+                    ("create_date", tag.create_date.format("%Y-%m-%d %H:%M:%S").to_string())
                 ],
             );
         }
