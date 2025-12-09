@@ -309,3 +309,33 @@ async fn get_play_is_not_authorized_token() {
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn get_play_is_not_authorized_token_when_random_path_and_no_token_header() {
+    let token_repo = InMemoryTokenRepo::default();
+    let tag_repo = init_in_memory_tag_repo();
+    let app_state = AppState {
+        token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
+    };
+    let app = app(app_state.clone());
+
+    for path in [
+        "/", "/random",
+        "/random/path",
+        "/random/path?query=param",
+        "/random/path#fragment"] {
+        // `Router` implements `tower::Service<Request<Body>>` so we can
+        // call it like any tower service, no need to run an HTTP server.
+        let response = app.clone()
+            .oneshot(Request::builder()
+                .uri("/random")
+                .body(Empty::new())
+                .unwrap()
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+}
