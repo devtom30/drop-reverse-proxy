@@ -108,13 +108,21 @@ async fn save_and_get_token_from_repo() {
     assert_eq!(json.get("tag").and_then(|v| v.as_str()), Some("tag2"));
 }
 
-#[tokio::test]
-async fn save_and_get_token_from_db() {
+// Ensure the container is stopped when the test ends
+struct DockerGuard(String);
+impl Drop for DockerGuard {
+    fn drop(&mut self) {
+        println!("docker stop redis container");
+        let _ = Command::new("docker").args(["stop", &self.0]).output();
+    }
+}
+
+fn init_redis_container() -> Option<(DockerGuard, String)> {
     // Try to launch a Redis container using Docker. If Docker is unavailable, skip the test.
     // 1) Ensure docker is available
     if Command::new("docker").arg("--version").output().is_err() {
         eprintln!("Skipping Redis-backed test: Docker CLI not available");
-        return;
+        return None;
     }
 
     // 2) Run a disposable Redis container with published random port
@@ -125,34 +133,27 @@ async fn save_and_get_token_from_db() {
         Ok(o) if o.status.success() => o,
         Ok(o) => {
             eprintln!("Skipping Redis-backed test: docker run failed: {}", String::from_utf8_lossy(&o.stderr));
-            return;
+            return None;
         }
         Err(e) => {
             eprintln!("Skipping Redis-backed test: cannot run docker: {e}");
-            return;
+            return None;
         }
     };
     let container_id = String::from_utf8_lossy(&run_out.stdout).trim().to_string();
 
-    // Ensure the container is stopped when the test ends
-    struct DockerGuard(String);
-    impl Drop for DockerGuard {
-        fn drop(&mut self) {
-            let _ = Command::new("docker").args(["stop", &self.0]).output();
-        }
-    }
-    let _guard = DockerGuard(container_id.clone());
+    let guard = DockerGuard(container_id.clone());
 
     // 3) Obtain the published host port for Redis (container port 6379)
     let port_out = match Command::new("docker").args(["port", &container_id, "6379/tcp"]).output() {
         Ok(o) if o.status.success() => o,
         Ok(o) => {
             eprintln!("Skipping Redis-backed test: docker port failed: {}", String::from_utf8_lossy(&o.stderr));
-            return;
+            return None;
         }
         Err(e) => {
             eprintln!("Skipping Redis-backed test: cannot get docker port: {e}");
-            return;
+            return None;
         }
     };
     let port_stdout = String::from_utf8_lossy(&port_out.stdout);
@@ -166,7 +167,7 @@ async fn save_and_get_token_from_db() {
         Some(p) => p,
         None => {
             eprintln!("Skipping Redis-backed test: unable to parse published port from '{}':", port_stdout);
-            return;
+            return None;
         }
     };
     let redis_url = format!("redis://127.0.0.1:{}/", host_port);
@@ -184,8 +185,15 @@ async fn save_and_get_token_from_db() {
     }
     if !ready {
         eprintln!("Skipping Redis-backed test: Redis in container not ready on {}", redis_url);
-        return;
+    } else {
+        return Some((guard, redis_url));
     }
+    None
+}
+
+#[tokio::test]
+async fn save_and_get_token_from_db() {
+    let (_docker_guard, redis_url) = init_redis_container().unwrap();
 
     // Arrange: app with Redis-backed repo pointing to the container
     let token_repo = TokenRepoDB::new(&redis_url).expect("failed to create TokenRepoDB");
