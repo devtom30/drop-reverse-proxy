@@ -1,7 +1,7 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use axum::http::{Request, StatusCode};
 use chrono::NaiveDateTime;
-use drop_reverse_proxy::{app, AppState, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo, TagRepoDB, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
+use drop_reverse_proxy::{app, AppState, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, Ip, IpRepo, IpRepoDB, Tag, TagRepo, TagRepoDB, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
 use http_body_util::Empty;
 use std::process::Command;
 use std::str::FromStr;
@@ -31,9 +31,11 @@ fn init_redis_tag_repo(redis_url: &String) -> Result<TagRepoDB, redis::RedisErro
 async fn get_tag() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
+    let ip_repo = IpRepoDB::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo.clone()),
     };
     let app = app(app_state.clone());
 
@@ -60,9 +62,11 @@ async fn get_tag() {
 async fn get_tag_error() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
+    let ip_repo = IpRepoDB::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
     };
     let app = app(app_state);
 
@@ -81,9 +85,11 @@ async fn tag_not_in_list_returns_500_and_no_token_header() {
     // Arrange: use in-memory repo
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
+    let ip_repo = IpRepoDB::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
     };
     let app = app(app_state);
 
@@ -108,9 +114,11 @@ async fn save_and_get_token_from_repo() {
     // Arrange: app with in-memory repo
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
+    let ip_repo = IpRepoDB::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
     };
     let app = app(app_state.clone());
 
@@ -228,9 +236,11 @@ async fn save_and_get_token_from_db() {
     // Arrange: app with Redis-backed repo pointing to the container
     let token_repo = TokenRepoDB::new(&redis_url).expect("failed to create TokenRepoDB");
     let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
+    let ip_repo = InMemoryIpRepo::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
-        tag_repo: Arc::new(tag_repo.clone())
+        tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
     };
     let app = app(app_state.clone());
 
@@ -265,6 +275,7 @@ let mut req = Request::builder()
 async fn get_play_is_authorized_token() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
+    let ip_repo = InMemoryIpRepo::default();
     let token_uuid_valid = Uuid::new_v4();
     let tag_ok = "tag1";
     let token = Token::new(
@@ -276,20 +287,19 @@ async fn get_play_is_authorized_token() {
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
     };
     let app = app(app_state.clone());
 
     // `Router` implements `tower::Service<Request<Body>>` so we can
     // call it like any tower service, no need to run an HTTP server.
-    let response = app
-        .oneshot(Request::builder()
-            .header(TOKEN_NAME, token_uuid_valid.to_string())
-            .uri("/play")
-            .body(Empty::new())
-            .unwrap()
-        )
-        .await
+    let mut req = Request::builder()
+        .header(TOKEN_NAME, token_uuid_valid.to_string())
+        .uri("/play")
+        .body(Empty::new())
         .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
+    let response = app.oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
 }
@@ -298,23 +308,23 @@ async fn get_play_is_authorized_token() {
 async fn get_play_is_not_authorized_token() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
+    let ip_repo = InMemoryIpRepo::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
     };
     let app = app(app_state.clone());
 
     // `Router` implements `tower::Service<Request<Body>>` so we can
     // call it like any tower service, no need to run an HTTP server.
-    let response = app
-        .oneshot(Request::builder()
-            .header(TOKEN_NAME, "dummy token")
-            .uri("/play")
-            .body(Empty::new())
-            .unwrap()
-        )
-        .await
+    let mut req = Request::builder()
+        .header(TOKEN_NAME, "dummy token")
+        .uri("/play")
+        .body(Empty::new())
         .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
+    let response = app.oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
@@ -323,28 +333,99 @@ async fn get_play_is_not_authorized_token() {
 async fn get_play_is_not_authorized_token_when_random_path_and_no_token_header() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
+    let ip_repo = InMemoryIpRepo::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
     };
     let app = app(app_state.clone());
 
     for path in [
-        "/", "/random",
+        "/",
+        "/random",
         "/random/path",
         "/random/path?query=param",
         "/random/path#fragment"] {
         // `Router` implements `tower::Service<Request<Body>>` so we can
         // call it like any tower service, no need to run an HTTP server.
-        let response = app.clone()
-            .oneshot(Request::builder()
-                .uri("/random")
-                .body(Empty::new())
-                .unwrap()
-            )
-            .await
+        let mut req = Request::builder()
+            .uri(path)
+            .body(Empty::new())
             .unwrap();
+        req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
+        let response = app.clone().oneshot(req).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
+}
+
+#[tokio::test]
+async fn get_play_is_authorized_token_and_ip_is_allowed() {
+    let token_repo = InMemoryTokenRepo::default();
+    let tag_repo = InMemoryTagRepo::default();
+    let ip_repo = InMemoryIpRepo::default();
+    let ip_addr = [127,0,0,1];
+    ip_repo.save_or_update(Ip::new(IpAddr::from(ip_addr), NaiveDateTime::default(), NaiveDateTime::default(), 5));
+    let token_uuid_valid = Uuid::new_v4();
+    let tag_ok = "tag1";
+    let token = Token::new(
+        token_uuid_valid,
+        NaiveDateTime::default(),
+        tag_ok.to_string()
+    );
+    token_repo.save_token(&token);
+    let app_state = AppState {
+        token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
+    };
+    let app = app(app_state.clone());
+
+    // `Router` implements `tower::Service<Request<Body>>` so we can
+    // call it like any tower service, no need to run an HTTP server.
+    let mut req = Request::builder()
+        .header(TOKEN_NAME, token_uuid_valid.to_string())
+        .uri("/play")
+        .body(Empty::new())
+        .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
+    let response = app.oneshot(req).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn get_play_is_authorized_token_and_ip_is_not_allowed() {
+    let token_repo = InMemoryTokenRepo::default();
+    let tag_repo = InMemoryTagRepo::default();
+    let ip_repo = InMemoryIpRepo::default();
+    let ip_addr = [127,0,0,1];
+    ip_repo.save_or_update(Ip::new(IpAddr::from(ip_addr), NaiveDateTime::default(), NaiveDateTime::default(), 10));
+    let token_uuid_valid = Uuid::new_v4();
+    let tag_ok = "tag1";
+    let token = Token::new(
+        token_uuid_valid,
+        NaiveDateTime::default(),
+        tag_ok.to_string()
+    );
+    token_repo.save_token(&token);
+    let app_state = AppState {
+        token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
+    };
+    let app = app(app_state.clone());
+
+    // `Router` implements `tower::Service<Request<Body>>` so we can
+    // call it like any tower service, no need to run an HTTP server.
+    let mut req = Request::builder()
+        .header(TOKEN_NAME, token_uuid_valid.to_string())
+        .uri("/play")
+        .body(Empty::new())
+        .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from((ip_addr, 12345))));
+    let response = app.oneshot(req).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }

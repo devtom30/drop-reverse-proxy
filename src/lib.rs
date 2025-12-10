@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 pub const TOKEN_NAME: &str = "dop_token";
+pub const MAX_BAD_ATTEMPTS: u32 = 10;
 
 pub fn app(state: AppState) -> Router {
     Router::new()
@@ -30,6 +31,10 @@ pub fn app(state: AppState) -> Router {
         .route(
             "/{*path}",
             get(file).route_layer(axum::middleware::from_fn_with_state(state.clone(), token_guard))
+        )
+        .route(
+            "/",
+            get(|| async { Ok::<_, axum::http::StatusCode>(StatusCode::UNAUTHORIZED) })
         )
         .with_state(state)
 }
@@ -75,12 +80,12 @@ impl Serialize for Token {
 pub struct AppState {
     pub token_repo: Arc<dyn TokenRepo>,
     pub tag_repo: Arc<dyn TagRepo>,
+    pub ip_repo: Arc<dyn IpRepo>
 }
 
 async fn tag(
     State(state): State<AppState>,
     Path(tag): Path<String>,
-    ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
 ) -> Result<(StatusCode, HeaderMap), AppError> {
     if let Some(tag_extracted) = extract_tag_from_path(tag.as_str()) {
         let uuid = Uuid::new_v4();
@@ -101,24 +106,34 @@ async fn tag(
 // Route guard for /tag that validates the requested tag is allowed
 async fn tag_guard(
     State(state): State<AppState>,
+    ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
     req: Request,
     next: Next
 ) -> Response {
+    println!("connect info ip {:#?}", connect_info.ip());
+    if !check_ip(connect_info.ip(), state.ip_repo) {
+        return AppError::Unauthorized.into_response();
+    }
     let path = req.uri().path();
     if let Some(tag) = extract_tag_from_path(path) {
         if check_tag(tag.as_str(), state.tag_repo) {
             return next.run(req).await;
         }
     }
+
     AppError::TagNotFound.into_response()
 }
 
 // Placeholder for future token checks
 async fn token_guard(
     State(state): State<AppState>,
+    ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
     req: Request,
     next: Next
 ) -> Response {
+    if !check_ip(connect_info.ip(), state.ip_repo) {
+        return AppError::Unauthorized.into_response();
+    }
     let headers = req.headers().clone();
     if let Some(header_token) = headers.get(TOKEN_NAME) {
         if let Ok(header_token_str) = header_token.to_str() {
@@ -134,6 +149,29 @@ async fn token_guard(
 
 fn check_tag(tag: &str, tag_repo: Arc<dyn TagRepo>) -> bool {
     tag_repo.get(tag.to_string()).is_some()
+}
+
+fn check_ip(ip_addr: IpAddr, ip_repo: Arc<dyn IpRepo>) -> bool {
+    match ip_repo.get(&ip_addr) {
+        Some(ip) => {
+            ip_repo.save_or_update(Ip {
+                addr: ip_addr,
+                first_seen: ip.first_seen,
+                last_seen: chrono::NaiveDateTime::default(),
+                nb_bad_attempts: ip.nb_bad_attempts + 1,
+            });
+            ip.nb_bad_attempts < MAX_BAD_ATTEMPTS
+        },
+        None => {
+            ip_repo.save_or_update(Ip {
+                addr: ip_addr,
+                first_seen: chrono::NaiveDateTime::default(),
+                last_seen: chrono::NaiveDateTime::default(),
+                nb_bad_attempts: 1,
+            });
+            true
+        },
+    }
 }
 
 fn extract_tag_from_path(uri_path: &str) -> Option<String> {
@@ -315,5 +353,99 @@ impl TagRepo for TagRepoDB {
                 ],
             );
         }
+    }
+}
+
+#[derive(Debug, Clone, new)]
+pub struct Ip {
+    addr: IpAddr,
+    first_seen: NaiveDateTime,
+    last_seen: NaiveDateTime,
+    nb_bad_attempts: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct IpRepoDB {
+    client: redis::Client,
+}
+
+impl Default for IpRepoDB {
+    fn default() -> Self {
+        let client = create_redis_client();
+        Self { client }
+    }
+}
+
+pub trait IpRepo: Send + Sync {
+    fn get(&self, ip_addr: &IpAddr) -> Option<Ip>;
+    fn save_or_update(&self, ip: Ip);
+}
+
+impl IpRepo for IpRepoDB {
+    fn get(&self, ip_addr: &IpAddr) -> Option<Ip> {
+        let mut conn = match self.client.get_connection() {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
+        let key = format!("ip:{}", ip_addr.to_string());
+        let ip_addr_s: Option<String> = conn.hget(&key, "addr").ok();
+        let first_seen: Option<String> = conn.hget(&key, "first_seen").ok();
+        let last_seen: Option<String> = conn.hget(&key, "last_seen").ok();
+        let nb_bad_attempts: Option<String> = conn.hget(&key, "nb_bad_attempts").ok();
+
+        match (ip_addr_s, first_seen, last_seen, nb_bad_attempts) {
+            (Some(_ip_addr_str), Some(fs_str), Some(ls_str), Some(nb_bad_attempts_str)) => {
+                Some(Ip {
+                    addr: ip_addr.clone(),
+                    first_seen: chrono::NaiveDateTime::parse_from_str(&fs_str, "%Y-%m-%d %H:%M:%S").ok()?,
+                    last_seen: chrono::NaiveDateTime::parse_from_str(&ls_str, "%Y-%m-%d %H:%M:%S").ok()?,
+                    nb_bad_attempts: nb_bad_attempts_str.parse::<u32>().ok()?,
+                })
+            }
+            _ => None,
+        }
+
+    }
+
+    fn save_or_update(&self, ip: Ip) {
+        if let Ok(mut conn) = self.client.get_connection() {
+            let key = format!("ip:{}", ip.addr.to_string());
+            let _: redis::RedisResult<()> = conn.hset_multiple(
+                &key,
+                &[
+                    (
+                        "addr",
+                        ip.addr.to_string()
+                    ),
+                    (
+                        "first_seen",
+                        ip.first_seen.format("%Y-%m-%d %H:%M:%S").to_string()
+                    ),
+                    (
+                        "last_seen",
+                        ip.last_seen.format("%Y-%m-%d %H:%M:%S").to_string()
+                    ),
+                    (
+                        "nb_bad_attempts",
+                        ip.nb_bad_attempts.to_string()
+                    )
+                ],
+            );
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InMemoryIpRepo {
+    map: Arc<Mutex<HashMap<IpAddr, Ip>>>,
+}
+
+impl IpRepo for InMemoryIpRepo {
+    fn get(&self, ip_addr: &IpAddr) -> Option<Ip> {
+        self.map.lock().unwrap().get(ip_addr).cloned()
+    }
+
+    fn save_or_update(&self, ip: Ip) {
+        self.map.lock().expect("can't lock mutex").insert(ip.addr.clone(), ip);
     }
 }
