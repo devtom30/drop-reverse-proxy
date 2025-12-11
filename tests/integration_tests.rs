@@ -236,7 +236,8 @@ async fn save_and_get_token_from_db() {
     // Arrange: app with Redis-backed repo pointing to the container
     let token_repo = TokenRepoDB::new(&redis_url).expect("failed to create TokenRepoDB");
     let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
-    let ip_repo = InMemoryIpRepo::default();
+    let ip_repo = IpRepoDB::new(&redis_url).expect("failed to create IpRepoDB");
+    ip_repo.save_or_update(Ip::new(IpAddr::from([127,0,0,1]), NaiveDateTime::default(), NaiveDateTime::default(), 0));
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),

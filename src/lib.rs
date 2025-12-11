@@ -376,6 +376,12 @@ impl Default for IpRepoDB {
     }
 }
 
+impl IpRepoDB {
+    pub fn new(redis_url: &str) -> redis::RedisResult<Self> {
+        Ok(Self { client: redis::Client::open(redis_url)? })
+    }
+}
+
 pub trait IpRepo: Send + Sync {
     fn get(&self, ip_addr: &IpAddr) -> Option<Ip>;
     fn save_or_update(&self, ip: Ip);
