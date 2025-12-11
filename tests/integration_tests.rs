@@ -273,6 +273,37 @@ let mut req = Request::builder()
 }
 
 #[tokio::test]
+async fn get_tag_should_return_500_when_ip_max_attempts_reached() {
+    let (_docker_guard, redis_url) = init_redis_container().unwrap();
+
+    // Arrange: app with Redis-backed repo pointing to the container
+    let token_repo = TokenRepoDB::new(&redis_url).expect("failed to create TokenRepoDB");
+    let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
+    let ip_repo = IpRepoDB::new(&redis_url).expect("failed to create IpRepoDB");
+    ip_repo.save_or_update(Ip::new(IpAddr::from([127,0,0,1]), NaiveDateTime::default(), NaiveDateTime::default(), 10));
+    let app_state = AppState {
+        token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
+    };
+    let app = app(app_state.clone());
+
+    // Act: call the endpoint that saves a token with tag2
+    let mut req = Request::builder()
+        .uri("/tag/tag2")
+        .body(Empty::new())
+        .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
+    let response = app.oneshot(req).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    // Extract token id from header
+    let headers = response.headers();
+    assert!(headers.get(TOKEN_NAME).is_none());
+}
+
+#[tokio::test]
 async fn get_play_is_authorized_token() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
