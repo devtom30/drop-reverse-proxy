@@ -31,7 +31,7 @@ fn init_redis_tag_repo(redis_url: &String) -> Result<TagRepoDB, redis::RedisErro
 async fn get_tag() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
-    let ip_repo = IpRepoDB::default();
+    let ip_repo = InMemoryIpRepo::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -56,26 +56,32 @@ async fn get_tag() {
 
     let token = app_state.token_repo.get_token(Uuid::from_str(header_map.get(TOKEN_NAME).unwrap().to_str().unwrap()).unwrap());
     assert!(token.is_some());
+
+    let ip_repo_opt = ip_repo.get(&IpAddr::from([127,0,0,1]));
+    assert!(ip_repo_opt.is_some());
+    assert_eq!(0, *ip_repo_opt.unwrap().nb_bad_attempts());
 }
 
 #[tokio::test]
 async fn get_tag_error() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
-    let ip_repo = IpRepoDB::default();
+    let ip_repo = InMemoryIpRepo::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
-        ip_repo: Arc::new(ip_repo),
+        ip_repo: Arc::new(ip_repo.clone()),
     };
     let app = app(app_state);
 
     // `Router` implements `tower::Service<Request<Body>>` so we can
     // call it like any tower service, no need to run an HTTP server.
-    let response = app
-        .oneshot(Request::builder().uri("/tag/tagUnknown").body(Empty::new()).unwrap())
-        .await
+    let mut req = Request::builder()
+        .uri("/tag/tagUnknown")
+        .body(Empty::new())
         .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
+    let response = app.oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
@@ -85,24 +91,21 @@ async fn tag_not_in_list_returns_500_and_no_token_header() {
     // Arrange: use in-memory repo
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
-    let ip_repo = IpRepoDB::default();
+    let ip_repo = InMemoryIpRepo::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
-        ip_repo: Arc::new(ip_repo),
+        ip_repo: Arc::new(ip_repo.clone()),
     };
     let app = app(app_state);
 
     // Act: request a tag that is not in the allowed list
-    let response = app
-        .oneshot(
-            Request::builder()
-                .uri("/tag/not-allowed-tag")
-                .body(Empty::new())
-                .unwrap(),
-        )
-        .await
+    let mut req = Request::builder()
+        .uri("/tag/not-allowed-tag")
+        .body(Empty::new())
         .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
+    let response = app.oneshot(req).await.unwrap();
 
     // Assert: 500 returned by the guard/handler and no token header set
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
@@ -114,11 +117,11 @@ async fn save_and_get_token_from_repo() {
     // Arrange: app with in-memory repo
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
-    let ip_repo = IpRepoDB::default();
+    let ip_repo = InMemoryIpRepo::default();
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
-        ip_repo: Arc::new(ip_repo),
+        ip_repo: Arc::new(ip_repo.clone()),
     };
     let app = app(app_state.clone());
 
@@ -144,6 +147,9 @@ async fn save_and_get_token_from_repo() {
     let json = serde_json::to_value(&token).unwrap();
     assert_eq!(json.get("id").and_then(|v| v.as_str()), Some(token_id.to_string().as_str()));
     assert_eq!(json.get("tag").and_then(|v| v.as_str()), Some("tag2"));
+    let ip_repo_opt = ip_repo.get(&IpAddr::from([127,0,0,1]));
+    assert!(ip_repo_opt.is_some());
+    assert_eq!(0, *ip_repo_opt.unwrap().nb_bad_attempts());
 }
 
 // Ensure the container is stopped when the test ends
@@ -237,16 +243,16 @@ async fn save_and_get_token_from_db() {
     let token_repo = TokenRepoDB::new(&redis_url).expect("failed to create TokenRepoDB");
     let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
     let ip_repo = IpRepoDB::new(&redis_url).expect("failed to create IpRepoDB");
-    ip_repo.save_or_update(Ip::new(IpAddr::from([127,0,0,1]), NaiveDateTime::default(), NaiveDateTime::default(), 0));
+    ip_repo.save_or_update(&IpAddr::from([127,0,0,1]), 0);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
-        ip_repo: Arc::new(ip_repo),
+        ip_repo: Arc::new(ip_repo.clone()),
     };
     let app = app(app_state.clone());
 
     // Act: call the endpoint that saves a token with tag2
-let mut req = Request::builder()
+    let mut req = Request::builder()
         .uri("/tag/tag2")
         .body(Empty::new())
         .unwrap();
@@ -270,6 +276,10 @@ let mut req = Request::builder()
     let json = serde_json::to_value(&token).unwrap();
     assert_eq!(json.get("id").and_then(|v| v.as_str()), Some(token_id.to_string().as_str()));
     assert_eq!(json.get("tag").and_then(|v| v.as_str()), Some("tag2"));
+
+    let ip_repo_opt = ip_repo.get(&IpAddr::from([127,0,0,1]));
+    assert!(ip_repo_opt.is_some());
+    assert_eq!(0, *ip_repo_opt.unwrap().nb_bad_attempts());
 }
 
 #[tokio::test]
@@ -280,7 +290,7 @@ async fn get_tag_should_return_500_when_ip_max_attempts_reached() {
     let token_repo = TokenRepoDB::new(&redis_url).expect("failed to create TokenRepoDB");
     let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
     let ip_repo = IpRepoDB::new(&redis_url).expect("failed to create IpRepoDB");
-    ip_repo.save_or_update(Ip::new(IpAddr::from([127,0,0,1]), NaiveDateTime::default(), NaiveDateTime::default(), 10));
+    ip_repo.save_or_update(&IpAddr::from([127,0,0,1]), 10);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -398,7 +408,7 @@ async fn get_play_is_authorized_token_and_ip_is_allowed() {
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
     let ip_addr = [127,0,0,1];
-    ip_repo.save_or_update(Ip::new(IpAddr::from(ip_addr), NaiveDateTime::default(), NaiveDateTime::default(), 5));
+    ip_repo.save_or_update(&IpAddr::from(ip_addr), 5);
     let token_uuid_valid = Uuid::new_v4();
     let tag_ok = "tag1";
     let token = Token::new(
@@ -433,7 +443,7 @@ async fn get_play_is_authorized_token_and_ip_is_not_allowed() {
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
     let ip_addr = [127,0,0,1];
-    ip_repo.save_or_update(Ip::new(IpAddr::from(ip_addr), NaiveDateTime::default(), NaiveDateTime::default(), 10));
+    ip_repo.save_or_update(&IpAddr::from(ip_addr), 10);
     let token_uuid_valid = Uuid::new_v4();
     let tag_ok = "tag1";
     let token = Token::new(
@@ -445,7 +455,7 @@ async fn get_play_is_authorized_token_and_ip_is_not_allowed() {
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
-        ip_repo: Arc::new(ip_repo),
+        ip_repo: Arc::new(ip_repo.clone()),
     };
     let app = app(app_state.clone());
 
@@ -460,4 +470,31 @@ async fn get_play_is_authorized_token_and_ip_is_not_allowed() {
     let response = app.oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+// IpRepoDB tests
+#[test]
+fn ip_repo_save_or_update_when_not_exists() {
+    let (_docker_guard, redis_url) = init_redis_container().unwrap();
+    let ip_repo = IpRepoDB::new(redis_url.as_str()).expect("failed to create IpRepoDB");
+    ip_repo.save_or_update(&IpAddr::from([127,0,0,1]), 0);
+    assert_eq!(0, *ip_repo.get(&IpAddr::from([127,0,0,1])).unwrap().nb_bad_attempts());
+}
+
+#[test]
+fn ip_repo_save_or_update_when_exists() {
+    let (_docker_guard, redis_url) = init_redis_container().unwrap();
+    let ip_repo = IpRepoDB::new(redis_url.as_str()).expect("failed to create IpRepoDB");
+    let ip = std::net::IpAddr::from([127,0,0,1]);
+    ip_repo.save_or_update(&ip, 0);
+    assert_eq!(0, *ip_repo.get(&ip).unwrap().nb_bad_attempts());
+}
+
+#[test]
+fn ip_repo_save_or_update_when_exists_and_nb_bad_attempts_is_more_than_zero() {
+    let (_docker_guard, redis_url) = init_redis_container().unwrap();
+    let ip_repo = IpRepoDB::new(redis_url.as_str()).expect("failed to create IpRepoDB");
+    let ip = std::net::IpAddr::from([127,0,0,1]);
+    ip_repo.save_or_update(&ip, 1);
+    assert_eq!(1, *ip_repo.get(&ip).unwrap().nb_bad_attempts());
 }

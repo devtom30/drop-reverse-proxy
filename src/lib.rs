@@ -36,6 +36,7 @@ pub fn app(state: AppState) -> Router {
             "/",
             get(|| async { Ok::<_, axum::http::StatusCode>(StatusCode::UNAUTHORIZED) })
         )
+        // check route ""
         .with_state(state)
 }
 
@@ -111,17 +112,30 @@ async fn tag_guard(
     next: Next
 ) -> Response {
     println!("connect info ip {:#?}", connect_info.ip());
-    if !check_ip(connect_info.ip(), state.ip_repo) {
+    if !check_ip(connect_info.ip(), &state.ip_repo) {
+        increment_ip_nb_bad_attempts(&connect_info.ip(), &state.ip_repo);
         return AppError::Unauthorized.into_response();
     }
     let path = req.uri().path();
     if let Some(tag) = extract_tag_from_path(path) {
         if check_tag(tag.as_str(), state.tag_repo) {
+            state.ip_repo.save_or_update(&connect_info.ip(), 0);
             return next.run(req).await;
+        } else {
+            increment_ip_nb_bad_attempts(&connect_info.ip(), &state.ip_repo);
         }
     }
 
     AppError::TagNotFound.into_response()
+}
+
+fn increment_ip_nb_bad_attempts(ip_addr: &IpAddr, ip_repo: &Arc<dyn IpRepo>) {
+    match ip_repo.get(&ip_addr) {
+        None => {}
+        Some(ip) => {
+            ip_repo.save_or_update(ip_addr, ip.nb_bad_attempts + 1);
+        }
+    }
 }
 
 // Placeholder for future token checks
@@ -131,7 +145,7 @@ async fn token_guard(
     req: Request,
     next: Next
 ) -> Response {
-    if !check_ip(connect_info.ip(), state.ip_repo) {
+    if !check_ip(connect_info.ip(), &state.ip_repo) {
         return AppError::Unauthorized.into_response();
     }
     let headers = req.headers().clone();
@@ -144,6 +158,7 @@ async fn token_guard(
             }
         }
     }
+    increment_ip_nb_bad_attempts(&connect_info.ip(), &state.ip_repo);
     AppError::Unauthorized.into_response()
 }
 
@@ -151,26 +166,13 @@ fn check_tag(tag: &str, tag_repo: Arc<dyn TagRepo>) -> bool {
     tag_repo.get(tag.to_string()).is_some()
 }
 
-fn check_ip(ip_addr: IpAddr, ip_repo: Arc<dyn IpRepo>) -> bool {
+fn check_ip(ip_addr: IpAddr, ip_repo: &Arc<dyn IpRepo>) -> bool {
     match ip_repo.get(&ip_addr) {
         Some(ip) => {
-            ip_repo.save_or_update(Ip {
-                addr: ip_addr,
-                first_seen: ip.first_seen,
-                last_seen: chrono::NaiveDateTime::default(),
-                nb_bad_attempts: ip.nb_bad_attempts + 1,
-            });
+            println!("{:#?}", ip);
             ip.nb_bad_attempts < MAX_BAD_ATTEMPTS
         },
-        None => {
-            ip_repo.save_or_update(Ip {
-                addr: ip_addr,
-                first_seen: chrono::NaiveDateTime::default(),
-                last_seen: chrono::NaiveDateTime::default(),
-                nb_bad_attempts: 1,
-            });
-            true
-        },
+        None => true,
     }
 }
 
@@ -364,6 +366,21 @@ pub struct Ip {
     nb_bad_attempts: u32,
 }
 
+impl Ip {
+    pub fn addr(&self) -> &IpAddr {
+        &self.addr
+    }
+    pub fn first_seen(&self) -> &NaiveDateTime {
+        &self.first_seen
+    }
+    pub fn last_seen(&self) -> &NaiveDateTime {
+        &self.last_seen
+    }
+    pub fn nb_bad_attempts(&self) -> &u32 {
+        &self.nb_bad_attempts
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct IpRepoDB {
     client: redis::Client,
@@ -384,7 +401,7 @@ impl IpRepoDB {
 
 pub trait IpRepo: Send + Sync {
     fn get(&self, ip_addr: &IpAddr) -> Option<Ip>;
-    fn save_or_update(&self, ip: Ip);
+    fn save_or_update(&self, ip_addr: &IpAddr, nb_bad_attempts: u32);
 }
 
 impl IpRepo for IpRepoDB {
@@ -413,28 +430,33 @@ impl IpRepo for IpRepoDB {
 
     }
 
-    fn save_or_update(&self, ip: Ip) {
+    fn save_or_update(&self, ip_addr: &IpAddr, nb_bad_attempts: u32) {
         if let Ok(mut conn) = self.client.get_connection() {
-            let key = format!("ip:{}", ip.addr.to_string());
+            let mut first_seen = chrono::NaiveDateTime::default();
+            let mut last_seen= first_seen;
+            if let Some(ip) = self.get(ip_addr) {
+                first_seen = ip.first_seen;
+            }
+            let key = format!("ip:{}", ip_addr.to_string());
             let _: redis::RedisResult<()> = conn.hset_multiple(
                 &key,
                 &[
                     (
                         "addr",
-                        ip.addr.to_string()
+                        ip_addr.to_string()
                     ),
                     (
                         "first_seen",
-                        ip.first_seen.format("%Y-%m-%d %H:%M:%S").to_string()
+                        first_seen.format("%Y-%m-%d %H:%M:%S").to_string()
                     ),
                     (
                         "last_seen",
-                        ip.last_seen.format("%Y-%m-%d %H:%M:%S").to_string()
+                        last_seen.format("%Y-%m-%d %H:%M:%S").to_string()
                     ),
                     (
                         "nb_bad_attempts",
-                        ip.nb_bad_attempts.to_string()
-                    )
+                        nb_bad_attempts.to_string()
+                        )
                 ],
             );
         }
@@ -451,7 +473,25 @@ impl IpRepo for InMemoryIpRepo {
         self.map.lock().unwrap().get(ip_addr).cloned()
     }
 
-    fn save_or_update(&self, ip: Ip) {
-        self.map.lock().expect("can't lock mutex").insert(ip.addr.clone(), ip);
+    fn save_or_update(&self, ip_addr: &IpAddr, nb_bad_attempts: u32) {
+        let mut first_seen = chrono::NaiveDateTime::default();
+        let mut last_seen= first_seen;
+        if let Some(ip) = self.get(ip_addr) {
+            first_seen = ip.first_seen;
+        }
+        let key = format!("ip:{}", ip_addr.to_string());
+        self.map.lock().expect("can't lock mutex").insert(
+            ip_addr.clone(),
+            Ip::new(
+                *ip_addr,
+                first_seen,
+                last_seen,
+                nb_bad_attempts
+            ));
+
     }
 }
+
+    //        self.map.lock().expect("can't lock mutex").insert(ip.addr.clone(), ip);
+
+
