@@ -13,6 +13,7 @@ use serde::{Serialize, Serializer};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
+use axum::body::Body;
 use uuid::Uuid;
 
 pub const TOKEN_NAME: &str = "dop_token";
@@ -81,7 +82,8 @@ impl Serialize for Token {
 pub struct AppState {
     pub token_repo: Arc<dyn TokenRepo>,
     pub tag_repo: Arc<dyn TagRepo>,
-    pub ip_repo: Arc<dyn IpRepo>
+    pub ip_repo: Arc<dyn IpRepo>,
+    pub apache_http_url: String,
 }
 
 async fn tag(
@@ -189,8 +191,32 @@ fn extract_tag_from_path(uri_path: &str) -> Option<String> {
     }
 }
 
-async fn play() -> Result<StatusCode, AppError> {
-    Ok(StatusCode::OK)
+async fn play(
+    State(state): State<AppState>,
+    req: Request,
+) -> Result<Response, AppError> {
+    let headers = req.headers().clone();
+    if let Some(header_token) = headers.get(TOKEN_NAME) {
+        if let Ok(token_str) = header_token.to_str() {
+            if let Ok(token_uuid_requested) = Uuid::parse_str(token_str) {
+                let token_opt = state.token_repo.get_token(token_uuid_requested);
+                if let Some(token) = token_opt {
+                    let mut uri_new = String::from(state.apache_http_url);
+                    uri_new.push_str("tag/");
+                    uri_new.push_str(&token.tag);
+                    uri_new.push_str("/playlist.m3u8");
+                    let req = Request::builder().uri(uri_new.as_str()).body(Body::empty()).unwrap();
+                    return match reqwest::get(uri_new).await {
+                        Ok(resp) => {
+                            Ok(resp.bytes().await.unwrap().into_response())
+                        },
+                        Err(_) => Err(AppError::TagNotFound),
+                    }
+                }
+            }
+        }
+    }
+    Ok(StatusCode::UNAUTHORIZED.into_response())
 }
 
 async fn file() {}

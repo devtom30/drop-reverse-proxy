@@ -1,0 +1,1 @@
+docker run --rm httpd:2.4 cat /usr/local/apache2/conf/extra/httpd-vhosts.conf > httpd-vhosts.conf

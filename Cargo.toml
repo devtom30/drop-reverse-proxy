@@ -15,3 +15,4 @@ chrono = "0.4.42"
 uuid = { version = "1.18.1", features = ["v4"] }
 redis = { version = "0.25" }
 derive-new = "0.5"
+reqwest = { version = "0.12", features = ["json"] }

@@ -13,6 +13,7 @@ async fn main() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
+        apache_http_url: String::from("http://<HTTP_SERVER>:<HTTP_PORT>"),
     };
     axum::serve(
         listener,

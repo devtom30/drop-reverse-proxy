@@ -36,6 +36,7 @@ async fn get_tag() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
+        apache_http_url: String::from(""),
     };
     let app = app(app_state.clone());
 
@@ -71,6 +72,7 @@ async fn get_tag_error() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
+        apache_http_url: String::from(""),
     };
     let app = app(app_state);
 
@@ -96,6 +98,7 @@ async fn tag_not_in_list_returns_500_and_no_token_header() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
+        apache_http_url: String::from(""),
     };
     let app = app(app_state);
 
@@ -122,6 +125,7 @@ async fn save_and_get_token_from_repo() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
+        apache_http_url: String::from(""),
     };
     let app = app(app_state.clone());
 
@@ -156,7 +160,7 @@ async fn save_and_get_token_from_repo() {
 struct DockerGuard(String);
 impl Drop for DockerGuard {
     fn drop(&mut self) {
-        println!("docker stop redis container");
+        println!("docker stop container");
         let _ = Command::new("docker").args(["stop", &self.0]).output();
     }
 }
@@ -235,6 +239,143 @@ fn init_redis_container() -> Option<(DockerGuard, String)> {
     None
 }
 
+/// Initialize an Apache HTTP/2 (httpd) container similarly to `init_redis_container`.
+/// Returns a guard that will stop the container when dropped and the base URL.
+fn init_apache_http2_container() -> Option<(DockerGuard, String)> {
+    // 1) Ensure docker is available
+    if Command::new("docker").arg("--version").output().is_err() {
+        eprintln!("Skipping Apache http2-backed test: Docker CLI not available");
+        return None;
+    }
+
+    // 2) Build a custom Apache httpd image using the Dockerfile and configs in tests/resources
+    //    This ensures httpd is configured as required by the integration tests.
+    let image_tag = format!("drop-rp-tests-httpd:{}", Uuid::new_v4().simple());
+
+    // Build context path and Dockerfile path (relative to project root when running tests)
+    let build_out = match Command::new("docker")
+        .args([
+            "build",
+            "-t",
+            &image_tag,
+            "-f",
+            "tests/resources/Dockerfile",
+            "tests/resources",
+        ])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        Ok(o) => {
+            eprintln!(
+                "Skipping Apache http2-backed test: docker build failed: {}\n{}",
+                String::from_utf8_lossy(&o.stderr),
+                String::from_utf8_lossy(&o.stdout)
+            );
+            return None;
+        }
+        Err(e) => {
+            eprintln!("Skipping Apache http2-backed test: cannot run docker build: {e}");
+            return None;
+        }
+    };
+    let _ = build_out; // silence unused warning if not used in debug output paths
+
+    // 3) Run a disposable container from the freshly built image with published random port
+    //    Note: httpd listens on 80/tcp inside the container.
+    let run_out = match Command::new("docker")
+        .args(["run", "-d", "-P", "--rm", &image_tag]) // exposes 80/tcp
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        Ok(o) => {
+            eprintln!(
+                "Skipping Apache http2-backed test: docker run failed: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+            return None;
+        }
+        Err(e) => {
+            eprintln!("Skipping Apache http2-backed test: cannot run docker: {e}");
+            return None;
+        }
+    };
+    let container_id = String::from_utf8_lossy(&run_out.stdout).trim().to_string();
+
+    let guard = DockerGuard(container_id.clone());
+
+    // 4) Obtain the published host port for Apache (container port 80)
+    let port_out = match Command::new("docker").args(["port", &container_id, "80/tcp"]).output() {
+        Ok(o) if o.status.success() => o,
+        Ok(o) => {
+            eprintln!(
+                "Skipping Apache http2-backed test: docker port failed: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+            return None;
+        }
+        Err(e) => {
+            eprintln!("Skipping Apache http2-backed test: cannot get docker port: {e}");
+            return None;
+        }
+    };
+    let port_stdout = String::from_utf8_lossy(&port_out.stdout);
+    let host_port = match port_stdout
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .and_then(|l| l.rsplit(':').next())
+        .and_then(|p| p.trim().parse::<u16>().ok())
+    {
+        Some(p) => p,
+        None => {
+            eprintln!(
+                "Skipping Apache http2-backed test: unable to parse published port from '{}':",
+                port_stdout
+            );
+            return None;
+        }
+    };
+    let base_url = format!("http://127.0.0.1:{}/", host_port);
+
+    // 5) Wait for Apache to be ready by attempting to connect to the TCP port.
+    use std::net::TcpStream;
+    let mut ready = false;
+    for _ in 0..100 { // up to ~10 seconds
+        if TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, host_port)).is_ok() {
+            ready = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    if !ready {
+        eprintln!("Skipping Apache http2-backed test: server in container not ready on {}", base_url);
+        None
+    } else {
+        Some((guard, base_url))
+    }
+}
+
+#[tokio::test]
+async fn apache_container_is_ok() {
+    let ( _guard, base_url) = init_apache_http2_container()
+        .expect("no apache http container launched");
+
+    let apache_url = format!("{base_url}");
+    match reqwest::get(apache_url).await {
+        Ok(resp) => {
+            assert!(resp.status().is_success())
+        },
+        Err(err) => panic!("{:#?}", err)
+    }
+
+    let apache_url = format!("{base_url}tag/jdznjevb/out000.ts");
+    match reqwest::get(apache_url).await {
+        Ok(resp) => {
+            assert!(resp.status().is_success())
+        },
+        Err(err) => panic!("{:#?}", err)
+    }
+}
+
 #[tokio::test]
 async fn save_and_get_token_from_db() {
     let (_docker_guard, redis_url) = init_redis_container().unwrap();
@@ -248,6 +389,7 @@ async fn save_and_get_token_from_db() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
+        apache_http_url: String::from(""),
     };
     let app = app(app_state.clone());
 
@@ -295,6 +437,7 @@ async fn get_tag_should_return_500_when_ip_max_attempts_reached() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
+        apache_http_url: String::from(""),
     };
     let app = app(app_state.clone());
 
@@ -315,6 +458,9 @@ async fn get_tag_should_return_500_when_ip_max_attempts_reached() {
 
 #[tokio::test]
 async fn get_play_is_authorized_token() {
+    let ( _guard, base_url) = init_apache_http2_container()
+        .expect("no apache http container launched");
+
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
@@ -330,6 +476,7 @@ async fn get_play_is_authorized_token() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
+        apache_http_url: base_url,
     };
     let app = app(app_state.clone());
 
@@ -348,6 +495,9 @@ async fn get_play_is_authorized_token() {
 
 #[tokio::test]
 async fn get_play_is_not_authorized_token() {
+    let ( _guard, base_url) = init_apache_http2_container()
+        .expect("no apache http container launched");
+
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
@@ -355,6 +505,7 @@ async fn get_play_is_not_authorized_token() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
+        apache_http_url: base_url,
     };
     let app = app(app_state.clone());
 
@@ -380,6 +531,7 @@ async fn get_play_is_not_authorized_token_when_random_path_and_no_token_header()
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
+        apache_http_url: String::from(""),
     };
     let app = app(app_state.clone());
 
@@ -404,6 +556,9 @@ async fn get_play_is_not_authorized_token_when_random_path_and_no_token_header()
 
 #[tokio::test]
 async fn get_play_is_authorized_token_and_ip_is_allowed() {
+    let ( _guard, base_url) = init_apache_http2_container()
+        .expect("no apache http container launched");
+
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
@@ -421,6 +576,7 @@ async fn get_play_is_authorized_token_and_ip_is_allowed() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
+        apache_http_url: base_url,
     };
     let app = app(app_state.clone());
 
@@ -456,6 +612,7 @@ async fn get_play_is_authorized_token_and_ip_is_not_allowed() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
+        apache_http_url: String::from(""),
     };
     let app = app(app_state.clone());
 
@@ -497,4 +654,45 @@ fn ip_repo_save_or_update_when_exists_and_nb_bad_attempts_is_more_than_zero() {
     let ip = std::net::IpAddr::from([127,0,0,1]);
     ip_repo.save_or_update(&ip, 1);
     assert_eq!(1, *ip_repo.get(&ip).unwrap().nb_bad_attempts());
+}
+
+#[tokio::test]
+async fn get_play_is_not_authorized_token_when_no_token() {
+    let (_docker_guard, redis_url) = init_redis_container().unwrap();
+    let (_docker_guard_apache_http2, apache_url) = init_apache_http2_container().unwrap();
+
+    // Arrange: app with Redis-backed repo pointing to the container
+    let tag_ok = "tag1";
+    let token_uuid_valid = Uuid::new_v4();
+    let token = Token::new(
+        token_uuid_valid,
+        NaiveDateTime::default(),
+        tag_ok.to_string()
+    );
+    let token_repo = TokenRepoDB::new(&redis_url).expect("failed to create TokenRepoDB");
+    token_repo.save_token(&token);
+    let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
+    let ip_repo = InMemoryIpRepo::default();
+
+    let app_state = AppState {
+        token_repo: Arc::new(token_repo.clone()),
+        tag_repo: Arc::new(tag_repo.clone()),
+        ip_repo: Arc::new(ip_repo),
+        apache_http_url: apache_url,
+    };
+    let app = app(app_state.clone());
+
+    let token_repo = InMemoryTokenRepo::default();
+    let tag_repo = InMemoryTagRepo::default();
+
+
+    let ip_addr = [127,0,0,1];
+    let mut req = Request::builder()
+        .uri("/play")
+        .body(Empty::new())
+        .unwrap();
+    req.extensions_mut().insert(ConnectInfo(SocketAddr::from((ip_addr, 12345))));
+    let response = app.oneshot(req).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }
