@@ -1,5 +1,6 @@
+use axum::body::Body;
 use axum::extract::{ConnectInfo, Path, Request, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -13,7 +14,7 @@ use serde::{Serialize, Serializer};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
-use axum::body::Body;
+use axum::http::header::{InvalidHeaderValue, SET_COOKIE};
 use uuid::Uuid;
 
 pub const TOKEN_NAME: &str = "dop_token";
@@ -45,6 +46,7 @@ pub fn app(state: AppState) -> Router {
 enum AppError {
     TagNotFound,
     Unauthorized,
+    InternalError
 }
 
 impl IntoResponse for AppError {
@@ -53,6 +55,7 @@ impl IntoResponse for AppError {
         match &self {
             AppError::TagNotFound => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
             AppError::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
+            AppError::InternalError => StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
@@ -88,19 +91,49 @@ pub struct AppState {
 
 async fn tag(
     State(state): State<AppState>,
+    ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
     Path(tag): Path<String>,
-) -> Result<(StatusCode, HeaderMap), AppError> {
+) -> Result<Response, AppError> {
     if let Some(tag_extracted) = extract_tag_from_path(tag.as_str()) {
         let uuid = Uuid::new_v4();
-        let mut headers = HeaderMap::new();
-        headers.insert(TOKEN_NAME, uuid.to_string().parse().unwrap());
 
         state.token_repo.save_token(&Token {
             id: uuid,
             create_date: NaiveDateTime::default(),
-            tag: tag_extracted,
+            tag: tag_extracted.clone(),
         });
-        return Ok((StatusCode::OK, headers))
+
+        let mut uri_new = String::from(state.apache_http_url);
+        uri_new.push_str("/tag/");
+        uri_new.push_str(&tag_extracted);
+        uri_new.push_str("/index.html");
+        let req = Request::builder().uri(uri_new.as_str()).body(Body::empty()).unwrap();
+        println!("calling url {uri_new}");
+        return match reqwest::get(uri_new).await {
+            Ok(resp) => {
+                let mut response = resp.bytes().await.unwrap().into_response().into_body().into_response();
+                let mut headers = response.headers_mut();
+                headers.insert(TOKEN_NAME, uuid.to_string().parse().unwrap());
+
+                let header_value_str = format!("{}={}", TOKEN_NAME, uuid);
+                match HeaderValue::from_str(header_value_str.as_str()) {
+                    Ok(header_value) => {
+                        response.headers_mut().append(
+                            SET_COOKIE,
+                            header_value
+                        );
+                        Ok(response)
+                    }
+                    Err(_) => {
+                        Err(AppError::InternalError)
+                    }
+                }
+            },
+            Err(_) => {
+                increment_ip_nb_bad_attempts(&connect_info.ip(), &state.ip_repo);
+                Err(AppError::TagNotFound)
+            },
+        }
     }
 
     Err(AppError::TagNotFound)
@@ -148,6 +181,7 @@ async fn token_guard(
     next: Next
 ) -> Response {
     if !check_ip(connect_info.ip(), &state.ip_repo) {
+        increment_ip_nb_bad_attempts(&connect_info.ip(), &state.ip_repo);
         return AppError::Unauthorized.into_response();
     }
     let headers = req.headers().clone();
@@ -193,6 +227,7 @@ fn extract_tag_from_path(uri_path: &str) -> Option<String> {
 
 async fn play(
     State(state): State<AppState>,
+    ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
     req: Request,
 ) -> Result<Response, AppError> {
     let headers = req.headers().clone();
@@ -202,15 +237,18 @@ async fn play(
                 let token_opt = state.token_repo.get_token(token_uuid_requested);
                 if let Some(token) = token_opt {
                     let mut uri_new = String::from(state.apache_http_url);
-                    uri_new.push_str("tag/");
+                    uri_new.push_str("/tag/");
                     uri_new.push_str(&token.tag);
                     uri_new.push_str("/playlist.m3u8");
-                    let req = Request::builder().uri(uri_new.as_str()).body(Body::empty()).unwrap();
+                    println!("calling {uri_new}");
                     return match reqwest::get(uri_new).await {
                         Ok(resp) => {
                             Ok(resp.bytes().await.unwrap().into_response())
                         },
-                        Err(_) => Err(AppError::TagNotFound),
+                        Err(_) => {
+                            increment_ip_nb_bad_attempts(&connect_info.ip(), &state.ip_repo);
+                            Err(AppError::TagNotFound)
+                        },
                     }
                 }
             }
