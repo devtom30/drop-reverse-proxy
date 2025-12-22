@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 fn init_in_memory_tag_repo() -> InMemoryTagRepo {
     let tag_repo = InMemoryTagRepo::default();
-    ["tag1", "tag2", "tag3"].iter()
+    ["tag1", "tag2", "tag3", "jdznjevb", "xurnxenyoawltkky"].iter()
         .for_each(|t| tag_repo.save(&Tag::new(t.to_string(), NaiveDateTime::default())));
     tag_repo
 }
@@ -24,11 +24,16 @@ fn init_redis_tag_repo(redis_url: &String) -> Result<TagRepoDB, redis::RedisErro
     tag_repo_db.save(&Tag::new("tag1".to_string(), NaiveDateTime::default()));
     tag_repo_db.save(&Tag::new("tag2".to_string(), NaiveDateTime::default()));
     tag_repo_db.save(&Tag::new("tag3".to_string(), NaiveDateTime::default()));
+    tag_repo_db.save(&Tag::new("jdznjevb".to_string(), NaiveDateTime::default()));
+    tag_repo_db.save(&Tag::new("xurnxenyoawltkky".to_string(), NaiveDateTime::default()));
     Ok(tag_repo_db)
 }
 
 #[tokio::test]
 async fn get_tag() {
+    let ( _guard, base_url) = init_apache_http2_container()
+        .expect("no apache http container launched");
+
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
     let ip_repo = InMemoryIpRepo::default();
@@ -36,7 +41,7 @@ async fn get_tag() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        apache_http_url: String::from(""),
+        apache_http_url: base_url,
     };
     let app = app(app_state.clone());
 
@@ -44,7 +49,7 @@ async fn get_tag() {
     // call it like any tower service, no need to run an HTTP server
 
     let mut req = Request::builder()
-        .uri("/tag/tag1")
+        .uri("/tag/xurnxenyoawltkky")
         .body(Empty::new())
         .unwrap();
     req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
@@ -117,6 +122,9 @@ async fn tag_not_in_list_returns_500_and_no_token_header() {
 
 #[tokio::test]
 async fn save_and_get_token_from_repo() {
+    let ( _guard, base_url) = init_apache_http2_container()
+        .expect("no apache http container launched");
+
     // Arrange: app with in-memory repo
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
@@ -125,13 +133,13 @@ async fn save_and_get_token_from_repo() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        apache_http_url: String::from(""),
+        apache_http_url: base_url,
     };
     let app = app(app_state.clone());
 
     // Act: call the endpoint that saves a token with tag2
     let mut req = Request::builder()
-        .uri("/tag/tag2")
+        .uri("/tag/jdznjevb")
         .body(Empty::new())
         .unwrap();
     req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
@@ -150,7 +158,7 @@ async fn save_and_get_token_from_repo() {
     // Serialize to inspect private fields
     let json = serde_json::to_value(&token).unwrap();
     assert_eq!(json.get("id").and_then(|v| v.as_str()), Some(token_id.to_string().as_str()));
-    assert_eq!(json.get("tag").and_then(|v| v.as_str()), Some("tag2"));
+    assert_eq!(json.get("tag").and_then(|v| v.as_str()), Some("jdznjevb"));
     let ip_repo_opt = ip_repo.get(&IpAddr::from([127,0,0,1]));
     assert!(ip_repo_opt.is_some());
     assert_eq!(0, *ip_repo_opt.unwrap().nb_bad_attempts());
@@ -379,6 +387,8 @@ async fn apache_container_is_ok() {
 #[tokio::test]
 async fn save_and_get_token_from_db() {
     let (_docker_guard, redis_url) = init_redis_container().unwrap();
+    let ( _guard, base_url) = init_apache_http2_container()
+        .expect("no apache http container launched");
 
     // Arrange: app with Redis-backed repo pointing to the container
     let token_repo = TokenRepoDB::new(&redis_url).expect("failed to create TokenRepoDB");
@@ -389,13 +399,13 @@ async fn save_and_get_token_from_db() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        apache_http_url: String::from(""),
+        apache_http_url: base_url,
     };
     let app = app(app_state.clone());
 
     // Act: call the endpoint that saves a token with tag2
     let mut req = Request::builder()
-        .uri("/tag/tag2")
+        .uri("/tag/jdznjevb")
         .body(Empty::new())
         .unwrap();
     req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127,0,0,1], 12345))));
@@ -417,7 +427,7 @@ async fn save_and_get_token_from_db() {
     // Serialize to inspect private fields
     let json = serde_json::to_value(&token).unwrap();
     assert_eq!(json.get("id").and_then(|v| v.as_str()), Some(token_id.to_string().as_str()));
-    assert_eq!(json.get("tag").and_then(|v| v.as_str()), Some("tag2"));
+    assert_eq!(json.get("tag").and_then(|v| v.as_str()), Some("jdznjevb"));
 
     let ip_repo_opt = ip_repo.get(&IpAddr::from([127,0,0,1]));
     assert!(ip_repo_opt.is_some());
