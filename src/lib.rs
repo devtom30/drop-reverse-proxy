@@ -257,7 +257,43 @@ async fn play(
     Ok(StatusCode::UNAUTHORIZED.into_response())
 }
 
-async fn file() {}
+async fn file(
+    State(state): State<AppState>,
+    ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
+    Path(path): Path<String>,
+    req: Request,
+) -> Result<Response, AppError> {
+    let headers = req.headers().clone();
+    if let Some(header_token) = headers.get(TOKEN_NAME) {
+        if let Ok(token_str) = header_token.to_str() {
+            if let Ok(token_uuid_requested) = Uuid::parse_str(token_str) {
+                let token_opt = state.token_repo.get_token(token_uuid_requested);
+                if let Some(token) = token_opt {
+                    let mut uri_new = String::from(state.apache_http_url);
+                    uri_new.push_str("/tag/");
+                    uri_new.push_str(&token.tag);
+                    uri_new.push('/');
+                    uri_new.push_str(path.as_str());
+
+                    println!("calling {uri_new}");
+                    return match reqwest::get(uri_new).await {
+                        Ok(resp) => {
+                            resp.headers().iter().for_each(|(header_name, header_value)| {
+                                println!("header: {:#?} - {:#?}", header_name, header_value);
+                            });
+                            Ok(resp.bytes().await.unwrap().into_response().into_body().into_response())
+                        },
+                        Err(_) => {
+                            increment_ip_nb_bad_attempts(&connect_info.ip(), &state.ip_repo);
+                            Err(AppError::TagNotFound)
+                        },
+                    }
+                }
+            }
+        }
+    }
+    Ok(StatusCode::UNAUTHORIZED.into_response())
+}
 
 pub trait TokenRepo: Send + Sync {
     fn get_token(&self, id: Uuid) -> Option<Token>;
