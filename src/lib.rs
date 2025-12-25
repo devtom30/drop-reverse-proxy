@@ -1,5 +1,4 @@
 use app_properties::AppProperties;
-use axum::body::Body;
 use axum::extract::{ConnectInfo, Path, Request, State};
 use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderValue, StatusCode};
@@ -36,7 +35,7 @@ pub fn app(state: AppState) -> Router {
         )
         .route(
             "/",
-            get(|| async { Ok::<_, axum::http::StatusCode>(StatusCode::UNAUTHORIZED) })
+            get(|| async { Ok::<_, StatusCode>(StatusCode::UNAUTHORIZED) })
         )
         // check route ""
         .with_state(state)
@@ -107,14 +106,10 @@ async fn tag(
         uri_new.push_str("/tag/");
         uri_new.push_str(&tag_extracted);
         uri_new.push_str("/index.html");
-        let req = Request::builder().uri(uri_new.as_str()).body(Body::empty()).unwrap();
         println!("calling url {uri_new}");
         return match reqwest::get(uri_new).await {
             Ok(resp) => {
                 let mut response = resp.bytes().await.unwrap().into_response().into_body().into_response();
-                let mut headers = response.headers_mut();
-                headers.insert(TOKEN_NAME, uuid.to_string().parse().unwrap());
-
                 let header_value_str = format!("{}={}", TOKEN_NAME, uuid);
                 match HeaderValue::from_str(header_value_str.as_str()) {
                     Ok(header_value) => {
@@ -351,7 +346,7 @@ impl TokenRepo for TokenRepoDB {
                 if id_str != id.to_string() {
                     return None;
                 }
-                let create_date = chrono::NaiveDateTime::parse_from_str(&cd_str, "%Y-%m-%d %H:%M:%S").ok()?;
+                let create_date = NaiveDateTime::parse_from_str(&cd_str, "%Y-%m-%d %H:%M:%S").ok()?;
                 Some(Token { id, create_date, tag })
             }
             _ => None,
@@ -434,7 +429,7 @@ impl TagRepo for TagRepoDB {
 
         match create_date_s {
             Some(cd_str) => {
-                let create_date = chrono::NaiveDateTime::parse_from_str(&cd_str, "%Y-%m-%d %H:%M:%S").ok()?;
+                let create_date = NaiveDateTime::parse_from_str(&cd_str, "%Y-%m-%d %H:%M:%S").ok()?;
                 Some(Tag {
                     id: tag,
                     create_date,
@@ -520,8 +515,8 @@ impl IpRepo for IpRepoDB {
             (Some(_ip_addr_str), Some(fs_str), Some(ls_str), Some(nb_bad_attempts_str)) => {
                 Some(Ip {
                     addr: ip_addr.clone(),
-                    first_seen: chrono::NaiveDateTime::parse_from_str(&fs_str, "%Y-%m-%d %H:%M:%S").ok()?,
-                    last_seen: chrono::NaiveDateTime::parse_from_str(&ls_str, "%Y-%m-%d %H:%M:%S").ok()?,
+                    first_seen: NaiveDateTime::parse_from_str(&fs_str, "%Y-%m-%d %H:%M:%S").ok()?,
+                    last_seen: NaiveDateTime::parse_from_str(&ls_str, "%Y-%m-%d %H:%M:%S").ok()?,
                     nb_bad_attempts: nb_bad_attempts_str.parse::<u32>().ok()?,
                 })
             }
@@ -532,8 +527,8 @@ impl IpRepo for IpRepoDB {
 
     fn save_or_update(&self, ip_addr: &IpAddr, nb_bad_attempts: u32) {
         if let Ok(mut conn) = self.client.get_connection() {
-            let mut first_seen = chrono::NaiveDateTime::default();
-            let mut last_seen= first_seen;
+            let mut first_seen = NaiveDateTime::default();
+            let last_seen= first_seen;
             if let Some(ip) = self.get(ip_addr) {
                 first_seen = ip.first_seen;
             }
@@ -574,12 +569,11 @@ impl IpRepo for InMemoryIpRepo {
     }
 
     fn save_or_update(&self, ip_addr: &IpAddr, nb_bad_attempts: u32) {
-        let mut first_seen = chrono::NaiveDateTime::default();
-        let mut last_seen= first_seen;
+        let mut first_seen = NaiveDateTime::default();
+        let last_seen= first_seen;
         if let Some(ip) = self.get(ip_addr) {
             first_seen = ip.first_seen;
         }
-        let key = format!("ip:{}", ip_addr.to_string());
         self.map.lock().expect("can't lock mutex").insert(
             ip_addr.clone(),
             Ip::new(

@@ -1,5 +1,5 @@
 use axum::extract::ConnectInfo;
-use axum::http::{Request, StatusCode};
+use axum::http::{HeaderMap, Request, StatusCode};
 use chrono::NaiveDateTime;
 use drop_reverse_proxy::{app, AppState, Conf, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, IpRepo, IpRepoDB, Tag, TagRepo, TagRepoDB, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
 use http_body_util::Empty;
@@ -9,6 +9,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use regex::Regex;
+use reqwest::header::SET_COOKIE;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -57,16 +59,28 @@ async fn get_tag() {
     let response = app.oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-
-    let header_map = response.headers();
-    assert!(header_map.get(TOKEN_NAME).is_some());
-
-    let token = app_state.token_repo.get_token(Uuid::from_str(header_map.get(TOKEN_NAME).unwrap().to_str().unwrap()).unwrap());
-    assert!(token.is_some());
+    check_token_in_header_map_is_present_and_uuid(&response.headers());
 
     let ip_repo_opt = ip_repo.get(&IpAddr::from([127,0,0,1]));
     assert!(ip_repo_opt.is_some());
     assert_eq!(0, *ip_repo_opt.unwrap().nb_bad_attempts());
+}
+
+fn check_token_in_header_map_is_present_and_uuid(header_map: &HeaderMap) -> Uuid {
+    assert!(header_map.get(SET_COOKIE).is_some());
+    let set_cookie_header_value = header_map.get(SET_COOKIE).unwrap();
+    assert!(! set_cookie_header_value.is_empty());
+    let set_cookie = set_cookie_header_value.to_str().unwrap();
+    let re_str = format!(r"{}=(.+)(?:,|\b)", TOKEN_NAME);
+    let re = Regex::new(&re_str).unwrap();
+    let captures = re.captures(set_cookie);
+    assert!(captures.is_some());
+    let caps = captures.unwrap();
+    assert!(caps.get(1).is_some());
+    let token = caps.get(1).unwrap().as_str().to_string();
+    let token_as_uuid = Uuid::from_str(token.as_str());
+    assert!(token_as_uuid.is_ok());
+    token_as_uuid.unwrap()
 }
 
 #[tokio::test]
@@ -152,9 +166,7 @@ async fn save_and_get_token_from_repo() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Extract token id from header
-    let headers = response.headers();
-    let token_id_header = headers.get(TOKEN_NAME).expect("token header missing");
-    let token_id = Uuid::from_str(token_id_header.to_str().unwrap()).unwrap();
+    let token_id = check_token_in_header_map_is_present_and_uuid(&response.headers());
 
     // Assert: repo contains the saved token and fields match
     let token = app_state.token_repo.get_token(token_id).expect("token not found in repo");
@@ -417,11 +429,9 @@ async fn save_and_get_token_from_db() {
     let response = app.oneshot(req).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-
+    
     // Extract token id from header
-    let headers = response.headers();
-    let token_id_header = headers.get(TOKEN_NAME).expect("token header missing");
-    let token_id = Uuid::from_str(token_id_header.to_str().unwrap()).unwrap();
+    let token_id = check_token_in_header_map_is_present_and_uuid(&response.headers());
 
     // Assert: repo contains the saved token and fields match
     let token = app_state

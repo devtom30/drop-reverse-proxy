@@ -1,8 +1,8 @@
-use std::net::SocketAddr;
-use drop_reverse_proxy::{app, AppState, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, IpRepoDB, Tag, TagRepo, Conf};
-use std::sync::Arc;
 use app_properties::AppProperties;
 use chrono::NaiveDateTime;
+use drop_reverse_proxy::{app, AppState, Conf, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo};
+use std::net::SocketAddr;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
