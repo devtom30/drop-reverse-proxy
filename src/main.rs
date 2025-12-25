@@ -1,11 +1,15 @@
 use std::net::SocketAddr;
-use drop_reverse_proxy::{app, AppState, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, IpRepoDB, Tag, TagRepo};
+use drop_reverse_proxy::{app, AppState, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, IpRepoDB, Tag, TagRepo, Conf};
 use std::sync::Arc;
+use app_properties::AppProperties;
 use chrono::NaiveDateTime;
 
 #[tokio::main]
 async fn main() {
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:80").await.unwrap();
+    let properties: AppProperties = AppProperties::new();
+    let conf = Conf::from(properties);
+
+    let listener = tokio::net::TcpListener::bind(conf.bind_addr()).await.unwrap();
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     ["jdznjevb", "xurnxenyoawltkky", "tag3"].iter()
@@ -16,7 +20,7 @@ async fn main() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
-        apache_http_url: String::from("http://127.0.0.1:8084"),
+        conf
     };
     axum::serve(
         listener,

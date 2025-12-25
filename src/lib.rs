@@ -1,5 +1,7 @@
+use app_properties::AppProperties;
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Path, Request, State};
+use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
@@ -14,11 +16,9 @@ use serde::{Serialize, Serializer};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
-use axum::http::header::{InvalidHeaderValue, SET_COOKIE};
 use uuid::Uuid;
 
 pub const TOKEN_NAME: &str = "dop_token";
-pub const MAX_BAD_ATTEMPTS: u32 = 10;
 
 pub fn app(state: AppState) -> Router {
     Router::new()
@@ -86,7 +86,7 @@ pub struct AppState {
     pub token_repo: Arc<dyn TokenRepo>,
     pub tag_repo: Arc<dyn TagRepo>,
     pub ip_repo: Arc<dyn IpRepo>,
-    pub apache_http_url: String,
+    pub conf: Conf,
 }
 
 async fn tag(
@@ -103,7 +103,7 @@ async fn tag(
             tag: tag_extracted.clone(),
         });
 
-        let mut uri_new = String::from(state.apache_http_url);
+        let mut uri_new = String::from(state.conf.redirect_uri);
         uri_new.push_str("/tag/");
         uri_new.push_str(&tag_extracted);
         uri_new.push_str("/index.html");
@@ -147,7 +147,7 @@ async fn tag_guard(
     next: Next
 ) -> Response {
     println!("connect info ip {:#?}", connect_info.ip());
-    if !check_ip(connect_info.ip(), &state.ip_repo) {
+    if !check_ip(connect_info.ip(), &state.ip_repo, state.conf.max_attempts) {
         increment_ip_nb_bad_attempts(&connect_info.ip(), &state.ip_repo);
         return AppError::Unauthorized.into_response();
     }
@@ -180,7 +180,7 @@ async fn token_guard(
     req: Request,
     next: Next
 ) -> Response {
-    if !check_ip(connect_info.ip(), &state.ip_repo) {
+    if !check_ip(connect_info.ip(), &state.ip_repo, state.conf.max_attempts) {
         increment_ip_nb_bad_attempts(&connect_info.ip(), &state.ip_repo);
         return AppError::Unauthorized.into_response();
     }
@@ -202,11 +202,11 @@ fn check_tag(tag: &str, tag_repo: Arc<dyn TagRepo>) -> bool {
     tag_repo.get(tag.to_string()).is_some()
 }
 
-fn check_ip(ip_addr: IpAddr, ip_repo: &Arc<dyn IpRepo>) -> bool {
+fn check_ip(ip_addr: IpAddr, ip_repo: &Arc<dyn IpRepo>, max_bad_attempts: u8) -> bool {
     match ip_repo.get(&ip_addr) {
         Some(ip) => {
             println!("{:#?}", ip);
-            ip.nb_bad_attempts < MAX_BAD_ATTEMPTS
+            ip.nb_bad_attempts < max_bad_attempts as u32
         },
         None => true,
     }
@@ -236,7 +236,7 @@ async fn play(
             if let Ok(token_uuid_requested) = Uuid::parse_str(token_str) {
                 let token_opt = state.token_repo.get_token(token_uuid_requested);
                 if let Some(token) = token_opt {
-                    let mut uri_new = String::from(state.apache_http_url);
+                    let mut uri_new = String::from(state.conf.redirect_uri);
                     uri_new.push_str("/tag/");
                     uri_new.push_str(&token.tag);
                     uri_new.push_str("/playlist.m3u8");
@@ -269,7 +269,7 @@ async fn file(
             if let Ok(token_uuid_requested) = Uuid::parse_str(token_str) {
                 let token_opt = state.token_repo.get_token(token_uuid_requested);
                 if let Some(token) = token_opt {
-                    let mut uri_new = String::from(state.apache_http_url);
+                    let mut uri_new = String::from(state.conf.redirect_uri);
                     uri_new.push_str("/tag/");
                     uri_new.push_str(&token.tag);
                     uri_new.push('/');
@@ -592,6 +592,44 @@ impl IpRepo for InMemoryIpRepo {
     }
 }
 
-    //        self.map.lock().expect("can't lock mutex").insert(ip.addr.clone(), ip);
+#[derive(Clone)]
+pub struct Conf {
+    redirect_uri: String,
+    bind_addr: String,
+    max_attempts: u8
+}
 
+impl Conf {
 
+    pub fn redirect_uri(&self) -> &str {
+        &self.redirect_uri
+    }
+
+    pub fn bind_addr(&self) -> &str {
+        &self.bind_addr
+    }
+
+    pub fn max_attempts(&self) -> u8 {
+        self.max_attempts
+    }
+
+    pub fn new(redirect_uri: String, bind_addr: String, max_attempts: u8) -> Self {
+        Self { redirect_uri, bind_addr, max_attempts }
+    }
+}
+
+impl From<AppProperties> for Conf {
+    fn from(value: AppProperties) -> Self {
+        ["redirect_uri", "bind_addr", "max_attempts"].iter()
+            .filter(|str| value.get(str).is_empty())
+            .for_each(|str| {
+                println!("{} is not set, can't start", str);
+                std::process::exit(1);
+            });
+        Conf {
+            redirect_uri: value.get("redirect_uri").parse().unwrap_or(String::from("http://localhost:8084")),
+            bind_addr: value.get("bind_addr").parse().unwrap_or(String::from("localhost:8000")),
+            max_attempts: value.get("max_attempts").parse().unwrap_or(5)
+        }
+    }
+}
