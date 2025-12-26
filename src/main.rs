@@ -1,13 +1,13 @@
 use app_properties::AppProperties;
 use chrono::NaiveDateTime;
-use drop_reverse_proxy::{app, AppState, Conf, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo};
+use drop_reverse_proxy::{app, create_conf_from_toml_file, AppState, Conf, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
-    let properties: AppProperties = AppProperties::new();
-    let conf = Conf::from(properties);
+    let conf = create_conf_from_toml_file("app.toml")
+        .expect("can't load conf from toml file");
 
     let listener = tokio::net::TcpListener::bind(conf.bind_addr()).await.unwrap();
     let token_repo = InMemoryTokenRepo::default();

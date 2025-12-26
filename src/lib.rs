@@ -1,4 +1,3 @@
-use app_properties::AppProperties;
 use axum::extract::{ConnectInfo, Path, Request, State};
 use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderValue, StatusCode};
@@ -11,10 +10,12 @@ use derive_new::new;
 use redis::Commands;
 use regex::Regex;
 use serde::ser::SerializeStruct;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
+use figment::Figment;
+use figment::providers::{Format, Toml};
 use uuid::Uuid;
 
 pub const TOKEN_NAME: &str = "dop_token";
@@ -586,11 +587,12 @@ impl IpRepo for InMemoryIpRepo {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize)]
 pub struct Conf {
     redirect_uri: String,
     bind_addr: String,
-    max_attempts: u8
+    max_attempts: u8,
+    tags: Vec<String>
 }
 
 impl Conf {
@@ -607,23 +609,17 @@ impl Conf {
         self.max_attempts
     }
 
-    pub fn new(redirect_uri: String, bind_addr: String, max_attempts: u8) -> Self {
-        Self { redirect_uri, bind_addr, max_attempts }
+    pub fn new(redirect_uri: String, bind_addr: String, max_attempts: u8, tags: Vec<String>) -> Self {
+        Self { redirect_uri, bind_addr, max_attempts, tags }
+    }
+
+    pub fn tags(&self) -> &Vec<String> {
+        &self.tags
     }
 }
 
-impl From<AppProperties> for Conf {
-    fn from(value: AppProperties) -> Self {
-        ["redirect_uri", "bind_addr", "max_attempts"].iter()
-            .filter(|str| value.get(str).is_empty())
-            .for_each(|str| {
-                println!("{} is not set, can't start", str);
-                std::process::exit(1);
-            });
-        Conf {
-            redirect_uri: value.get("redirect_uri").parse().unwrap_or(String::from("http://localhost:8084")),
-            bind_addr: value.get("bind_addr").parse().unwrap_or(String::from("localhost:8000")),
-            max_attempts: value.get("max_attempts").parse().unwrap_or(5)
-        }
-    }
+pub fn create_conf_from_toml_file(relative_path: &str) -> figment::Result<Conf> {
+    Figment::new()
+        .merge(Toml::file(relative_path))
+        .extract()
 }

@@ -17,6 +17,7 @@ redis = { version = "0.25" }
 derive-new = "0.5"
 reqwest = { version = "0.12", features = ["json"] }
 app_properties = "0.1.2"
+figment = { version = "0.10.19", features = ["toml"] }
 
 [profile.dev]
 opt-level = 0

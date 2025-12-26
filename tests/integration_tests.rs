@@ -39,7 +39,7 @@ async fn get_tag() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -88,7 +88,7 @@ async fn get_tag_error() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -115,7 +115,7 @@ async fn tag_not_in_list_returns_500_and_no_token_header() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -146,7 +146,7 @@ async fn save_and_get_token_from_repo() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -272,7 +272,7 @@ fn init_apache_http2_container() -> Option<(DockerGuard, String)> {
         return None;
     }
 
-    // 2) Build a custom Apache httpd image using the Dockerfile and configs in tests/resources
+    // 2) Build a custom Apache httpd image using the Dockerfile and configs in tests/resources/apache
     //    This ensures httpd is configured as required by the integration tests.
     let image_tag = format!("drop-rp-tests-httpd:{}", Uuid::new_v4().simple());
 
@@ -283,8 +283,8 @@ fn init_apache_http2_container() -> Option<(DockerGuard, String)> {
             "-t",
             &image_tag,
             "-f",
-            "tests/resources/Dockerfile",
-            "tests/resources",
+            "tests/resources/apache/Dockerfile",
+            "tests/resources/apache",
         ])
         .output()
     {
@@ -411,7 +411,7 @@ async fn save_and_get_token_from_db() {
     let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
     let ip_repo = IpRepoDB::new(&redis_url).expect("failed to create IpRepoDB");
     ip_repo.save_or_update(&IpAddr::from([127,0,0,1]), 0);
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -458,7 +458,7 @@ async fn get_tag_should_return_500_when_ip_max_attempts_reached() {
     let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
     let ip_repo = IpRepoDB::new(&redis_url).expect("failed to create IpRepoDB");
     ip_repo.save_or_update(&IpAddr::from([127,0,0,1]), 10);
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -498,7 +498,7 @@ async fn get_play_is_authorized_token() {
         tag_ok.to_string()
     );
     token_repo.save_token(&token);
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -528,7 +528,7 @@ async fn get_play_is_not_authorized_token() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -555,7 +555,7 @@ async fn get_play_is_not_authorized_token_when_random_path_and_no_token_header()
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -601,7 +601,7 @@ async fn get_play_is_authorized_token_and_ip_is_allowed() {
         tag_ok.to_string()
     );
     token_repo.save_token(&token);
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -638,7 +638,7 @@ async fn get_play_is_authorized_token_and_ip_is_not_allowed() {
         tag_ok.to_string()
     );
     token_repo.save_token(&token);
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
@@ -704,7 +704,7 @@ async fn get_play_is_not_authorized_token_when_no_token() {
     token_repo.save_token(&token);
     let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10);
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new());
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
