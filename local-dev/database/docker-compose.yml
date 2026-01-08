@@ -1,0 +1,32 @@
+version: "3.8"
+services:
+  db:
+    image: postgres:18.1
+    container_name: db
+    restart: always
+    environment:
+      POSTGRES_DB: dropofculture
+      POSTGRES_USER: dropofculture
+      POSTGRES_PASSWORD: dropofculture
+      POSTGRES_ROOT_PASSWORD: dropofculture
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - 5432:5432
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  pgadmin:
+    image: dpage/pgadmin4:9.11
+    ports:
+      - 5050:80
+    environment:
+      # Required by pgAdmin
+      PGADMIN_DEFAULT_EMAIL: demo@example.com
+      PGADMIN_DEFAULT_PASSWORD: secret
+
+      # Don't require the user to login
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+
+      # Don't require a "master" password after logging in
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'

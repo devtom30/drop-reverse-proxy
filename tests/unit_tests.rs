@@ -1,6 +1,9 @@
-use std::path::PathBuf;
+use std::fs;
+use std::fs::File;
+use std::path::{Path, PathBuf};
 use figment::{Figment, providers::{Format, Toml}};
-use drop_reverse_proxy::{create_conf_from_toml_file, Conf, IpRepo};
+use redis::Commands;
+use drop_reverse_proxy::{check_drop_file, check_unarchived_drop_files, create_conf_from_toml_file, create_drop_from_toml_file, look_for_drop_files_at_path, Conf, IpRepo};
 
 #[test]
 fn ip_repo_save_or_update_when_not_exists() {
@@ -36,4 +39,68 @@ fn conf_is_ok() {
     assert_eq!("http://localhost:8084", config.redirect_uri());
     assert_eq!("127.0.0.1:8000", config.bind_addr());
     assert_eq!(10, config.max_attempts());
+}
+
+#[test]
+fn look_for_drop_files_at_path_returns_empty_list_when_import_path_is_empty() {
+    let import_path = "tests/resources/import_path/empty";
+    let files = look_for_drop_files_at_path(std::path::Path::new(import_path));
+    assert!(files.is_empty())
+}
+
+#[test]
+fn look_for_drop_files_at_path_returns_list_when_import_path_is_empty() {
+    let import_path = "tests/resources/import_path/ok";
+    let files = look_for_drop_files_at_path(std::path::Path::new(import_path));
+    assert!(!files.is_empty());
+    assert!(files.len() == 2);
+    assert!(files.contains(&"tests/resources/import_path/ok/drop_001".to_string()));
+    assert!(files.contains(&"tests/resources/import_path/ok/drop_002".to_string()));
+}
+
+#[test]
+fn look_for_drop_files_at_path_returns_empty_list_when_import_path_does_not_contain_valid_files() {
+    let import_path = "tests/resources/import_path/no_valid_files";
+    let files = look_for_drop_files_at_path(std::path::Path::new(import_path));
+    assert!(files.is_empty())
+}
+
+#[test]
+fn create_drop_from_toml_file_should_return_drop_struct() {
+    let drop = create_drop_from_toml_file("tests/resources/import_path/untar_drop/ok/drop_ok/drop.txt");
+    assert!(drop.is_ok());
+    let drop = drop.unwrap();
+    assert_eq!("Cool Rasta", drop.artist_name().as_ref().unwrap());
+    assert_eq!("Rasta's playlist", drop.playlist_name());
+    assert_eq!(3, drop.tracks().len());
+    assert!(drop.tracks().contains(&"track001.mp3".to_string()));
+    assert!(drop.tracks().contains(&"track002.mp3".to_string()));
+    assert!(drop.tracks().contains(&"track003.mp3".to_string()));
+}
+
+#[test]
+fn check_unarchived_drop_files_should_return_untar_directory_path() {
+    let path = "tests/resources/import_path/untar_drop/ok";
+    let result = check_unarchived_drop_files(path);
+    assert!(result.is_ok());
+    assert_eq!("tests/resources/import_path/untar_drop/ok/drop_ok", result.unwrap());
+
+    let result = check_unarchived_drop_files(&*(path.to_owned() + "/drop_ok"));
+    assert!(result.is_ok());
+    assert_eq!("tests/resources/import_path/untar_drop/ok/drop_ok", result.unwrap())
+}
+
+#[test]
+fn check_drop_file_should_return_untar_directory_path() {
+    let tar_gz_path = "tests/resources/import_path/correct_tar_gz/drop_ok.tar.gz";
+    let result = check_drop_file(&tar_gz_path);
+    assert!(result.is_ok());
+    let directory_path = result.unwrap();
+    let path = Path::new(&directory_path);
+    assert!(path.is_dir());
+    assert!(path.parent().unwrap().file_name().unwrap().to_str().unwrap().starts_with("correct_tar_gz_"));
+    assert_eq!(path.file_name().unwrap().to_str().unwrap(), "drop_ok");
+
+    // delete created directories
+    fs::remove_dir_all(&directory_path).expect("removing directory failed");
 }
