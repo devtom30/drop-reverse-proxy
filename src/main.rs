@@ -1,6 +1,5 @@
-use app_properties::AppProperties;
 use chrono::NaiveDateTime;
-use drop_reverse_proxy::{app, create_conf_from_toml_file, AppState, Conf, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo};
+use drop_reverse_proxy::{app, create_conf_from_toml_file, AppState, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo};
 use std::net::SocketAddr;
 use std::sync::Arc;
 

@@ -12,13 +12,21 @@ use regex::Regex;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
 use std::collections::HashMap;
+use std::fs;
+use std::fs::File;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use figment::Figment;
 use figment::providers::{Format, Toml};
 use uuid::Uuid;
+use flate2::read::GzDecoder;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tar::Archive;
 
 pub const TOKEN_NAME: &str = "dop_token";
+pub const TAG_ARCHIVE_PREFIX: &str = "drop_";
+
+pub mod repository;
 
 pub fn app(state: AppState) -> Router {
     Router::new()
@@ -35,6 +43,10 @@ pub fn app(state: AppState) -> Router {
             get(file).route_layer(axum::middleware::from_fn_with_state(state.clone(), token_guard))
         )
         .route(
+            "/drop/import",
+            get(drop_import).route_layer(axum::middleware::from_fn_with_state(state.clone(), drop_import_guard)),
+        )
+        .route(
             "/",
             get(|| async { Ok::<_, StatusCode>(StatusCode::UNAUTHORIZED) })
         )
@@ -46,7 +58,8 @@ pub fn app(state: AppState) -> Router {
 enum AppError {
     TagNotFound,
     Unauthorized,
-    InternalError
+    InternalError,
+    ResourceNotFound
 }
 
 impl IntoResponse for AppError {
@@ -55,7 +68,8 @@ impl IntoResponse for AppError {
         match &self {
             AppError::TagNotFound => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
             AppError::Unauthorized => StatusCode::UNAUTHORIZED.into_response(),
-            AppError::InternalError => StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            AppError::InternalError => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            AppError::ResourceNotFound => StatusCode::NOT_FOUND.into_response()
         }
     }
 }
@@ -135,6 +149,168 @@ async fn tag(
     Err(AppError::TagNotFound)
 }
 
+async fn drop_import(
+    State(state): State<AppState>
+) -> Result<Response, AppError> {
+    // check dir
+    let import_path = state.conf.import_path;
+    if import_path.is_empty() {
+        println!("import_path not set, can't import");
+        return Ok(StatusCode::FAILED_DEPENDENCY.into_response());
+    }
+    let path = std::path::Path::new(&import_path);
+    if !path.is_dir() {
+        println!("import_path is not a directory, can't import");
+        return Ok(StatusCode::FAILED_DEPENDENCY.into_response());
+    }
+    // look for files
+    let files_to_import = look_for_drop_files_at_path(&path);
+    if files_to_import.is_empty() {
+        println!("no files to import at import path");
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .body("{imported: 0}");
+        return Ok(StatusCode::OK.into_response());
+    }
+    // check files
+    for file in files_to_import {
+        if let Ok(drop_import_path) = check_drop_file(&file) {
+            // import drop files
+            // save drop struct
+              // create DB schema : artist, drop, playlist, tag…
+            // save files in static server dir
+              // add property for the dir path
+            // create tags (default quantity 10, should be parameterize in import request)
+              // save tags
+            // append tags and tags' URL in response
+        }
+    }
+
+    Ok(StatusCode::OK.into_response())
+}
+
+pub fn check_drop_file(file: &str) -> Result<String, ImportError> {
+    if !file.ends_with(".tar.gz") {
+        println!("file is not a tar.gz file");
+        return Err(ImportError::InvalidFileExtension)
+    }
+    // create temporary dir
+    let file_path = std::path::Path::new(file);
+    let file_parent_option = file_path.parent();
+    if file_parent_option.is_none() {
+        return Err(ImportError::NoFileParentDirectory);
+    }
+    let file_parent_path = file_parent_option.unwrap();
+    let in_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .or(Err(ImportError::InvalidUnixEpoch))?
+        .as_millis();
+    let untar_path_str = file_parent_path.to_str()
+        .ok_or(ImportError::InvalidParentDirectory)?;
+    let mut untar_path_string = String::from(untar_path_str);
+    untar_path_string.push('_');
+    untar_path_string.push_str(&*in_ms.to_string());
+    fs::create_dir(&untar_path_string).or(Err(ImportError::CantCreateDropUntarDirectory))?;
+
+    /*// copy to untar directory
+    let mut copy_path_string = untar_path_string.clone();
+    copy_path_string.push_str("/");
+    copy_path_string.push_str(file_path.file_name().unwrap().to_str().unwrap());
+    fs::copy(file, &copy_path_string).or(Err(ImportError::CantCopyToUntarDirectory))?;
+*/
+    // untar
+    let tar_gz = File::open(file_path)
+        .or(Err(ImportError::CantOpenDropFile))?;
+    let tar = GzDecoder::new(tar_gz);
+    let mut archive = Archive::new(tar);
+    archive.unpack(&untar_path_string.as_str()).or(Err(ImportError::CantUnpackDropFile))?;
+
+    // check files in untar dir
+    check_unarchived_drop_files(&untar_path_string)
+}
+
+pub fn check_unarchived_drop_files(untar_path_string: &str) -> Result<String, ImportError> {
+    // check if drop.txt is present
+    let drop_txt_path = untar_path_string.to_owned() + "/drop.txt";
+    let mut drop_result = create_drop_from_toml_file(&drop_txt_path);
+    let mut untar_path_string = String::from(untar_path_string);
+    if drop_result.is_err() {
+        fs::read_dir(&untar_path_string)
+            .or(Err(ImportError::CantReadUntarDirectory))?
+            .for_each(|dir_entry| {
+            if let Ok(dir_entry) = dir_entry {
+                if let Ok(file_type) = dir_entry.file_type() {
+                    if file_type.is_dir() {
+                        if let Some(file_name) = dir_entry.file_name().to_str() {
+                            if !file_name.starts_with(".") {
+                                if let Some(dir_entry_path) = dir_entry.path().to_str() {
+                                    untar_path_string = String::from(dir_entry_path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let drop_txt_path = untar_path_string.to_owned() + "/drop.txt";
+        drop_result = create_drop_from_toml_file(&drop_txt_path);
+        if drop_result.is_err() {
+            return Err(ImportError::NoDropDescriptionFileFound);
+        }
+    }
+
+    let drop = drop_result.unwrap();
+    // check if tracks are present and valid files
+    for track in drop.tracks {
+        if File::open(untar_path_string.to_owned() + "/" + &*track).is_err() {
+            return Err(ImportError::MissingTrackInDropArchive)
+        }
+    }
+    Ok(untar_path_string)
+}
+
+#[derive(Debug)]
+pub enum ImportError {
+    InvalidFileExtension,
+    InvalidUnixEpoch,
+    NoFileParentDirectory,
+    InvalidParentDirectory,
+    CantCreateDropUntarDirectory,
+    CantCopyToUntarDirectory,
+    CantOpenDropFile,
+    CantUnpackDropFile,
+    CantReadUntarDirectory,
+    NoDropDescriptionFileFound,
+    MissingTrackInDropArchive
+}
+
+pub fn look_for_drop_files_at_path(path: &std::path::Path) -> Vec<String> {
+    match fs::read_dir(path) {
+        Ok(read_dir) => {
+            let mut files = Vec::new();
+            for dir_entry in read_dir {
+                if let Ok(entry) = dir_entry {
+                    let entry_path = entry.path();
+                    if entry_path.is_file() {
+                        if let Some(file_name) = entry_path.file_name() {
+                            if let Some(file_name_str) = file_name.to_str() {
+                                if file_name_str.starts_with(TAG_ARCHIVE_PREFIX) &&
+                                    let Some(file_path) = entry_path.to_str() {
+                                    files.push(file_path.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            files
+        }
+        Err(_) => {
+            Vec::new()
+        }
+    }
+}
+
 // Route guard for /tag that validates the requested tag is allowed
 async fn tag_guard(
     State(state): State<AppState>,
@@ -158,6 +334,17 @@ async fn tag_guard(
     }
 
     AppError::TagNotFound.into_response()
+}
+
+async fn drop_import_guard(
+    ConnectInfo(connect_info): ConnectInfo<SocketAddr>,
+    req: Request,
+    next: Next
+) -> Response {
+    if !connect_info.ip().to_string().starts_with("127") {
+        return AppError::ResourceNotFound.into_response();
+    }
+    next.run(req).await
 }
 
 fn increment_ip_nb_bad_attempts(ip_addr: &IpAddr, ip_repo: &Arc<dyn IpRepo>) {
@@ -592,7 +779,8 @@ pub struct Conf {
     redirect_uri: String,
     bind_addr: String,
     max_attempts: u8,
-    tags: Vec<String>
+    tags: Vec<String>,
+    import_path: String
 }
 
 impl Conf {
@@ -609,17 +797,51 @@ impl Conf {
         self.max_attempts
     }
 
-    pub fn new(redirect_uri: String, bind_addr: String, max_attempts: u8, tags: Vec<String>) -> Self {
-        Self { redirect_uri, bind_addr, max_attempts, tags }
+    pub fn new(redirect_uri: String, bind_addr: String, max_attempts: u8, tags: Vec<String>, import_path: String) -> Self {
+        Self { redirect_uri, bind_addr, max_attempts, tags, import_path }
     }
 
     pub fn tags(&self) -> &Vec<String> {
         &self.tags
     }
+
+    pub fn import_path(&self) -> &str { &self.import_path }
 }
 
 pub fn create_conf_from_toml_file(relative_path: &str) -> figment::Result<Conf> {
     Figment::new()
         .merge(Toml::file(relative_path))
+        .extract()
+}
+
+#[derive(Clone, Deserialize, )]
+pub struct Drop {
+    artist_id: Option<String>,
+    artist_name: Option<String>,
+    playlist_name: String,
+    tracks: Vec<String>
+}
+
+impl Drop {
+    pub fn artist_id(&self) -> &Option<String> {
+        &self.artist_id
+    }
+
+    pub fn artist_name(&self) -> &Option<String> {
+        &self.artist_name
+    }
+
+    pub fn playlist_name(&self) -> &str {
+        &self.playlist_name
+    }
+
+    pub fn tracks(&self) -> &Vec<String> {
+        &self.tracks
+    }
+}
+
+pub fn create_drop_from_toml_file(path: &str) -> figment::Result<Drop> {
+    Figment::new()
+        .merge(Toml::file(path))
         .extract()
 }
