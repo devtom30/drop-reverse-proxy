@@ -37,7 +37,7 @@ async fn should_insert_data() {
     let repo = DropRepo::new(pool);
 
     // 4. Test save_or_update
-    let new_drop = Drop::new(0, 1, 10, 2);
+    let new_drop = Drop::new(0, 1, 2, 10);
 
     <DropRepo as Repo<Drop>>::save_or_update(&repo, &new_drop).await.expect("Failed to save drop");
 

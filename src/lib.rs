@@ -1,3 +1,4 @@
+use crate::repository::{Entity, Repo, RepoType};
 use axum::extract::{ConnectInfo, Path, Request, State};
 use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderValue, StatusCode};
@@ -7,6 +8,9 @@ use axum::routing::get;
 use axum::Router;
 use chrono::NaiveDateTime;
 use derive_new::new;
+use figment::providers::{Format, Toml};
+use figment::Figment;
+use flate2::read::GzDecoder;
 use redis::Commands;
 use regex::Regex;
 use serde::ser::SerializeStruct;
@@ -16,12 +20,9 @@ use std::fs;
 use std::fs::File;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
-use figment::Figment;
-use figment::providers::{Format, Toml};
-use uuid::Uuid;
-use flate2::read::GzDecoder;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
+use uuid::Uuid;
 
 pub const TOKEN_NAME: &str = "dop_token";
 pub const TAG_ARCHIVE_PREFIX: &str = "drop_";
@@ -101,6 +102,7 @@ pub struct AppState {
     pub tag_repo: Arc<dyn TagRepo>,
     pub ip_repo: Arc<dyn IpRepo>,
     pub conf: Conf,
+    pub entity_repositories: Vec<RepoType>
 }
 
 async fn tag(
@@ -177,6 +179,10 @@ async fn drop_import(
         if let Ok(drop_import_path) = check_drop_file(&file) {
             // import drop files
             // save drop struct
+            // if artist doesn't exist, create it
+            /*if let Ok(artist) = get_by_name() {
+
+            }*/
               // create DB schema : artist, drop, playlist, tag…
             // save files in static server dir
               // add property for the dir path

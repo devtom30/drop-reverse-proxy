@@ -1,5 +1,5 @@
 use derive_new::new;
-use crate::repository::{Entity, Repo, RepositoryError};
+use crate::repository::{Entity, Repo, RepoByName, RepositoryError};
 use sqlx::{Pool, Postgres};
 
 #[derive(sqlx::FromRow, Debug, Clone, PartialEq, new)]
@@ -58,5 +58,20 @@ VALUES ($1)
             .await
             .map(|_| ())
             .map_err(|_| RepositoryError::EntityNotSaved)
+    }
+}
+
+impl RepoByName<Artist> for ArtistRepo {
+    async fn get_by_name(&self, name: &str) -> Result<Artist, RepositoryError> {
+        sqlx::query_as::<_, Artist>("
+SELECT id, name
+FROM \"artist\"
+WHERE name = $1
+LIMIT 1
+")
+            .bind(name)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|_| RepositoryError::EntityNotFound)
     }
 }
