@@ -1,11 +1,11 @@
-use drop_reverse_proxy::repository::{Repo};
-use drop_reverse_proxy::repository::drop::{Drop, DropRepo};
+use drop_reverse_proxy::repository::Repo;
+use drop_reverse_proxy::repository::playlist::{Playlist, PlaylistRepo};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
 #[tokio::test]
-async fn should_insert_data() {
+async fn test_playlist_repo_integration() {
     // 1. Start Postgres container
     let postgres_container = Postgres::default().start().await.expect("Failed to start Postgres container");
     let host = postgres_container.get_host().await.expect("Failed to get host");
@@ -22,11 +22,9 @@ async fn should_insert_data() {
     // 3. Initialize schema
     sqlx::query(
         r#"
-        CREATE TABLE "drop" (
+        CREATE TABLE "playlist" (
             id SERIAL PRIMARY KEY,
-            artist_id INTEGER NOT NULL,
-            artwork_id INTEGER NOT NULL,
-            type_id SMALLINT NOT NULL
+            name VARCHAR(255) NOT NULL
         )
         "#
     )
@@ -34,24 +32,19 @@ async fn should_insert_data() {
     .await
     .expect("Failed to create table");
 
-    let repo = DropRepo::new(pool);
+    let repo = PlaylistRepo::new(pool);
 
     // 4. Test save_or_update
-    let new_drop = Drop {
-        id: 0, // Serial will override this
-        artist_id: 1,
-        artwork_id: 10,
-        type_id: 2,
+    let new_playlist = Playlist {
+        id: 0,
+        name: "Test Playlist".to_string(),
     };
 
-    <DropRepo as Repo<Drop>>::save_or_update(&repo, &new_drop).await.expect("Failed to save drop");
+    <PlaylistRepo as Repo<Playlist>>::save_or_update(&repo, &new_playlist).await.expect("Failed to save playlist");
 
     // 5. Test get
-    // Since it's the first insert, id should be 1
-    let saved_drop = <DropRepo as Repo<Drop>>::get(&repo, "1").await.expect("Failed to get drop");
+    let saved_playlist = <PlaylistRepo as Repo<Playlist>>::get(&repo, "1").await.expect("Failed to get playlist");
     
-    assert_eq!(saved_drop.artist_id, 1);
-    assert_eq!(saved_drop.artwork_id, 10);
-    assert_eq!(saved_drop.type_id, 2);
-    assert_eq!(saved_drop.id, 1);
+    assert_eq!(saved_playlist.name, "Test Playlist");
+    assert_eq!(saved_playlist.id, 1);
 }

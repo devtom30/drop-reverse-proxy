@@ -1,6 +1,6 @@
 pub mod drop;
-
-use sqlx::{Pool, Postgres};
+pub mod artist;
+pub mod playlist;
 
 pub trait Entity {
     fn id(&self) -> String;
