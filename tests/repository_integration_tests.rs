@@ -1,4 +1,5 @@
-use drop_reverse_proxy::repository::{Drop, DropRepo, Repo};
+use drop_reverse_proxy::repository::{Repo};
+use drop_reverse_proxy::repository::drop::{Drop, DropRepo};
 use sqlx::postgres::PgPoolOptions;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
