@@ -44,7 +44,8 @@ async fn get_tag() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state.clone());
 
@@ -93,7 +94,8 @@ async fn get_tag_error() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state);
 
@@ -120,7 +122,8 @@ async fn tag_not_in_list_returns_500_and_no_token_header() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state);
 
@@ -151,7 +154,8 @@ async fn save_and_get_token_from_repo() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state.clone());
 
@@ -416,7 +420,8 @@ async fn save_and_get_token_from_db() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state.clone());
 
@@ -463,7 +468,8 @@ async fn get_tag_should_return_500_when_ip_max_attempts_reached() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state.clone());
 
@@ -503,7 +509,8 @@ async fn get_play_is_authorized_token() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state.clone());
 
@@ -533,7 +540,8 @@ async fn get_play_is_not_authorized_token() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state.clone());
 
@@ -560,7 +568,8 @@ async fn get_play_is_not_authorized_token_when_random_path_and_no_token_header()
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state.clone());
 
@@ -606,7 +615,8 @@ async fn get_play_is_authorized_token_and_ip_is_allowed() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state.clone());
 
@@ -643,7 +653,8 @@ async fn get_play_is_authorized_token_and_ip_is_not_allowed() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state.clone());
 
@@ -709,7 +720,8 @@ async fn get_play_is_not_authorized_token_when_no_token() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state.clone());
 
@@ -739,7 +751,8 @@ async fn drop_import_ok() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state);
 
@@ -765,7 +778,8 @@ async fn tag_import_returns_not_found_when_called_with_ip_not_accepted() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     let app = app(app_state);
 

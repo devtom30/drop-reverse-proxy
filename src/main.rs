@@ -19,7 +19,8 @@ async fn main() {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
-        conf
+        conf,
+        entity_repositories: Vec::new(),
     };
     axum::serve(
         listener,
