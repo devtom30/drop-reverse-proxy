@@ -2,6 +2,8 @@ use chrono::NaiveDateTime;
 use drop_reverse_proxy::{app, create_conf_from_toml_file, AppState, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, Tag, TagRepo};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use drop_reverse_proxy::service::drop::DropService;
+use drop_reverse_proxy::repository::drop::DropRepo;
 
 #[tokio::main]
 async fn main() {
@@ -15,12 +17,17 @@ async fn main() {
         .for_each(|t| tag_repo.save(&Tag::new(t.to_string(), NaiveDateTime::default())));
     let ip_repo = InMemoryIpRepo::default();
     //tag_repo.save(&drop_reverse_proxy::Tag::new("tag1".to_string(), chrono::NaiveDateTime::default()));
+    
+    let drop_repository = DropRepo::new()
+    let drop_service = DropService::new(drop_repository)
+    
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
         conf,
         entity_repositories: Vec::new(),
+        services: 
     };
     axum::serve(
         listener,

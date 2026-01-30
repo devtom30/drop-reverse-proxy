@@ -34,13 +34,21 @@ impl Entity for Drop {
     }
 }
 
+#[derive(Debug)]
 pub struct DropRepo {
-    pub pool: Pool<Postgres>,
+    url: String,
+    pool: Pool<Postgres>,
 }
 
 impl DropRepo {
-    pub fn new(pool: Pool<Postgres>) -> Self {
-        Self { pool }
+    pub fn new(url: String) -> DropRepo {
+        // create db pool
+    }
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+    pub fn pool(&self) -> &Pool<Postgres> {
+        &self.pool
     }
 }
 

@@ -1,4 +1,6 @@
+use derive_new::new;
 use serde::Deserialize;
+use crate::service::DropServiceT;
 
 #[derive(Debug)]
 pub enum ImportError {
@@ -38,5 +40,16 @@ impl DropRequest {
 
     pub fn tracks(&self) -> &Vec<String> {
         &self.tracks
+    }
+}
+
+#[derive(Clone, Deserialize, Debug, new)]
+pub struct DropService<'a> {
+    drop_repository: &'a dyn DropServiceT
+}
+
+impl <'a> DropServiceT for DropService<'a> {
+    fn create_drop(&self, drop_request: DropRequest) -> Result<(), ImportError> {
+        Ok(())
     }
 }
