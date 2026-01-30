@@ -1,4 +1,3 @@
-use crate::repository::{Entity, Repo, RepoType};
 use axum::extract::{ConnectInfo, Path, Request, State};
 use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderValue, StatusCode};
@@ -13,8 +12,10 @@ use figment::Figment;
 use flate2::read::GzDecoder;
 use redis::Commands;
 use regex::Regex;
+use repository::RepoType;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize, Serializer};
+use service::drop::{DropRequest, ImportError};
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -28,6 +29,7 @@ pub const TOKEN_NAME: &str = "dop_token";
 pub const TAG_ARCHIVE_PREFIX: &str = "drop_";
 
 pub mod repository;
+mod service;
 
 pub fn app(state: AppState) -> Router {
     Router::new()
@@ -238,7 +240,7 @@ pub fn check_drop_file(file: &str) -> Result<String, ImportError> {
 pub fn check_unarchived_drop_files(untar_path_string: &str) -> Result<String, ImportError> {
     // check if drop.txt is present
     let drop_txt_path = untar_path_string.to_owned() + "/drop.txt";
-    let mut drop_result = create_drop_from_toml_file(&drop_txt_path);
+    let mut drop_result = create_drop_request_from_toml_file(&drop_txt_path);
     let mut untar_path_string = String::from(untar_path_string);
     if drop_result.is_err() {
         fs::read_dir(&untar_path_string)
@@ -259,7 +261,7 @@ pub fn check_unarchived_drop_files(untar_path_string: &str) -> Result<String, Im
             }
         });
         let drop_txt_path = untar_path_string.to_owned() + "/drop.txt";
-        drop_result = create_drop_from_toml_file(&drop_txt_path);
+        drop_result = create_drop_request_from_toml_file(&drop_txt_path);
         if drop_result.is_err() {
             return Err(ImportError::NoDropDescriptionFileFound);
         }
@@ -267,27 +269,12 @@ pub fn check_unarchived_drop_files(untar_path_string: &str) -> Result<String, Im
 
     let drop = drop_result.unwrap();
     // check if tracks are present and valid files
-    for track in drop.tracks {
+    for track in drop.tracks() {
         if File::open(untar_path_string.to_owned() + "/" + &*track).is_err() {
             return Err(ImportError::MissingTrackInDropArchive)
         }
     }
     Ok(untar_path_string)
-}
-
-#[derive(Debug)]
-pub enum ImportError {
-    InvalidFileExtension,
-    InvalidUnixEpoch,
-    NoFileParentDirectory,
-    InvalidParentDirectory,
-    CantCreateDropUntarDirectory,
-    CantCopyToUntarDirectory,
-    CantOpenDropFile,
-    CantUnpackDropFile,
-    CantReadUntarDirectory,
-    NoDropDescriptionFileFound,
-    MissingTrackInDropArchive
 }
 
 pub fn look_for_drop_files_at_path(path: &std::path::Path) -> Vec<String> {
@@ -820,33 +807,7 @@ pub fn create_conf_from_toml_file(relative_path: &str) -> figment::Result<Conf> 
         .extract()
 }
 
-#[derive(Clone, Deserialize, )]
-pub struct Drop {
-    artist_id: Option<String>,
-    artist_name: Option<String>,
-    playlist_name: String,
-    tracks: Vec<String>
-}
-
-impl Drop {
-    pub fn artist_id(&self) -> &Option<String> {
-        &self.artist_id
-    }
-
-    pub fn artist_name(&self) -> &Option<String> {
-        &self.artist_name
-    }
-
-    pub fn playlist_name(&self) -> &str {
-        &self.playlist_name
-    }
-
-    pub fn tracks(&self) -> &Vec<String> {
-        &self.tracks
-    }
-}
-
-pub fn create_drop_from_toml_file(path: &str) -> figment::Result<Drop> {
+pub fn create_drop_request_from_toml_file(path: &str) -> figment::Result<DropRequest> {
     Figment::new()
         .merge(Toml::file(path))
         .extract()
