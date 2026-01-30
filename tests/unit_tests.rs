@@ -1,9 +1,6 @@
+use drop_reverse_proxy::{check_drop_file, check_unarchived_drop_files, create_conf_from_toml_file, create_drop_request_from_toml_file, look_for_drop_files_at_path, IpRepo};
 use std::fs;
-use std::fs::File;
-use std::path::{Path, PathBuf};
-use figment::{Figment, providers::{Format, Toml}};
-use redis::Commands;
-use drop_reverse_proxy::{check_drop_file, check_unarchived_drop_files, create_conf_from_toml_file, create_drop_from_toml_file, look_for_drop_files_at_path, Conf, IpRepo};
+use std::path::Path;
 
 #[test]
 fn ip_repo_save_or_update_when_not_exists() {
@@ -44,16 +41,16 @@ fn conf_is_ok() {
 #[test]
 fn look_for_drop_files_at_path_returns_empty_list_when_import_path_is_empty() {
     let import_path = "tests/resources/import_path/empty";
-    let files = look_for_drop_files_at_path(std::path::Path::new(import_path));
+    let files = look_for_drop_files_at_path(Path::new(import_path));
     assert!(files.is_empty())
 }
 
 #[test]
 fn look_for_drop_files_at_path_returns_list_when_import_path_is_empty() {
     let import_path = "tests/resources/import_path/ok";
-    let files = look_for_drop_files_at_path(std::path::Path::new(import_path));
+    let files = look_for_drop_files_at_path(Path::new(import_path));
     assert!(!files.is_empty());
-    assert!(files.len() == 2);
+    assert_eq!(files.len(), 2);
     assert!(files.contains(&"tests/resources/import_path/ok/drop_001".to_string()));
     assert!(files.contains(&"tests/resources/import_path/ok/drop_002".to_string()));
 }
@@ -61,13 +58,13 @@ fn look_for_drop_files_at_path_returns_list_when_import_path_is_empty() {
 #[test]
 fn look_for_drop_files_at_path_returns_empty_list_when_import_path_does_not_contain_valid_files() {
     let import_path = "tests/resources/import_path/no_valid_files";
-    let files = look_for_drop_files_at_path(std::path::Path::new(import_path));
+    let files = look_for_drop_files_at_path(Path::new(import_path));
     assert!(files.is_empty())
 }
 
 #[test]
 fn create_drop_from_toml_file_should_return_drop_struct() {
-    let drop = create_drop_from_toml_file("tests/resources/import_path/untar_drop/ok/drop_ok/drop.txt");
+    let drop = create_drop_request_from_toml_file("tests/resources/import_path/untar_drop/ok/drop_ok/drop.txt");
     assert!(drop.is_ok());
     let drop = drop.unwrap();
     assert_eq!("Cool Rasta", drop.artist_name().as_ref().unwrap());
