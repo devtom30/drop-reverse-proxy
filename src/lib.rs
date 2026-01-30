@@ -29,7 +29,7 @@ pub const TOKEN_NAME: &str = "dop_token";
 pub const TAG_ARCHIVE_PREFIX: &str = "drop_";
 
 pub mod repository;
-mod service;
+pub mod service;
 
 pub fn app(state: AppState) -> Router {
     Router::new()
@@ -179,18 +179,7 @@ async fn drop_import(
     // check files
     for file in files_to_import {
         if let Ok(drop_import_path) = check_drop_file(&file) {
-            // import drop files
-            // save drop struct
-            // if artist doesn't exist, create it
-            /*if let Ok(artist) = get_by_name() {
-
-            }*/
-              // create DB schema : artist, drop, playlist, tag…
-            // save files in static server dir
-              // add property for the dir path
-            // create tags (default quantity 10, should be parameterize in import request)
-              // save tags
-            // append tags and tags' URL in response
+            service::drop::DropService::new()
         }
     }
 
