@@ -8,11 +8,12 @@ pub trait Entity {
 #[derive(Debug)]
 pub enum RepositoryError {
     EntityNotFound,
-    EntityNotSaved
+    EntityNotSaved,
+    DatabaseError(sqlx::Error),
 }
 pub trait Repo<E: Entity> {
-    async fn get(&self, id: &str) -> Result<E, RepositoryError>;
-    async fn save_or_update(&self, entity: &E) -> Result<(), RepositoryError>;
+    async fn get(&self, id: i32) -> Result<E, RepositoryError>;
+    async fn save_or_update(&self, entity: &E) -> Result<i32, RepositoryError>;
 }
 
 pub trait RepoByName<E: Entity> {

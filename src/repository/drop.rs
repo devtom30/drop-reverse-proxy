@@ -1,5 +1,4 @@
 use crate::config::db::{create_pool, DatabaseConfig};
-use crate::repository::drop::DropRepoError::DatabaseError;
 use crate::repository::{Entity, Repo, RepositoryError};
 use derive_new::new;
 use sqlx::{Pool, Postgres};
@@ -47,10 +46,10 @@ pub enum DropRepoError {
 }
 
 impl DropRepo {
-    pub async fn new(database_config: &DatabaseConfig) -> Result<DropRepo, DropRepoError>  {
+    pub async fn new(database_config: &DatabaseConfig) -> Result<DropRepo, RepositoryError>  {
         match create_pool(database_config).await {
             Ok(pool) => Ok(Self { pool }),
-            Err(err) => Err(DatabaseError(err))
+            Err(err) => Err(RepositoryError::DatabaseError(err))
         }
 
     }
@@ -60,31 +59,35 @@ impl DropRepo {
 }
 
 impl Repo<Drop> for DropRepo {
-    async fn get(&self, id: &str) -> Result<Drop, RepositoryError> {
-        let parsed_id = id.parse::<i32>().map_err(|_| RepositoryError::EntityNotFound)?;
+    async fn get(&self, id: i32) -> Result<Drop, RepositoryError> {
         sqlx::query_as::<_, Drop>("
-SELECT id, artist_id, artwork_id, type_id
+SELECT id, artist_id, type_id, artwork_id
 FROM \"drop\"
 WHERE id = $1
 LIMIT 1
 ")
-            .bind(parsed_id)
+            .bind(id)
             .fetch_one(&self.pool)
             .await
-            .map_err(|_| RepositoryError::EntityNotFound)
+            .map_err(|e| {
+                match e {
+                    sqlx::Error::RowNotFound => RepositoryError::EntityNotFound,
+                    _ => RepositoryError::DatabaseError(e),
+                }
+            })
     }
 
-    async fn save_or_update(&self, drop: &Drop) -> Result<(), RepositoryError> {
-        sqlx::query("
+    async fn save_or_update(&self, drop: &Drop) -> Result<i32, RepositoryError> {
+        sqlx::query_scalar::<_, i32>("
 INSERT INTO \"drop\" (artist_id, artwork_id, type_id)
 VALUES ($1, $2, $3)
+RETURNING id
     ")
             .bind(drop.artist_id)
             .bind(drop.artwork_id)
             .bind(drop.type_id)
-            .execute(&self.pool)
+            .fetch_one(&self.pool)
             .await
-            .map(|_| ())
             .map_err(|_| RepositoryError::EntityNotSaved)
     }
 }

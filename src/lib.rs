@@ -182,15 +182,15 @@ async fn drop_import(
     }
     // check files
     for file in files_to_import {
-        if let Ok(drop_import_path) = check_drop_file(&file) {
-            // service::drop::DropService::new();
+        if let Ok((drop_import_path, drop_request)) = check_drop_file(&file) {
+            state.service_conf.drop_service.create_drop(drop_import_path, drop_request);
         }
     }
 
     Ok(StatusCode::OK.into_response())
 }
 
-pub fn check_drop_file(file: &str) -> Result<String, ImportError> {
+pub fn check_drop_file(file: &str) -> Result<(String, DropRequest), ImportError> {
     if !file.ends_with(".tar.gz") {
         println!("file is not a tar.gz file");
         return Err(ImportError::InvalidFileExtension)
@@ -230,7 +230,7 @@ pub fn check_drop_file(file: &str) -> Result<String, ImportError> {
     check_unarchived_drop_files(&untar_path_string)
 }
 
-pub fn check_unarchived_drop_files(untar_path_string: &str) -> Result<String, ImportError> {
+pub fn check_unarchived_drop_files(untar_path_string: &str) -> Result<(String, DropRequest), ImportError> {
     // check if drop.txt is present
     let drop_txt_path = untar_path_string.to_owned() + "/drop.txt";
     let mut drop_result = create_drop_request_from_toml_file(&drop_txt_path);
@@ -267,7 +267,7 @@ pub fn check_unarchived_drop_files(untar_path_string: &str) -> Result<String, Im
             return Err(ImportError::MissingTrackInDropArchive)
         }
     }
-    Ok(untar_path_string)
+    Ok((untar_path_string, drop))
 }
 
 pub fn look_for_drop_files_at_path(path: &std::path::Path) -> Vec<String> {

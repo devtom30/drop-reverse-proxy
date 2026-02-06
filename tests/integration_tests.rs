@@ -55,7 +55,7 @@ async fn get_tag() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state.clone());
@@ -108,7 +108,7 @@ async fn get_tag_error() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state);
@@ -139,7 +139,7 @@ async fn tag_not_in_list_returns_500_and_no_token_header() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state);
@@ -174,7 +174,7 @@ async fn save_and_get_token_from_repo() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state.clone());
@@ -443,7 +443,7 @@ async fn save_and_get_token_from_db() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state.clone());
@@ -494,7 +494,7 @@ async fn get_tag_should_return_500_when_ip_max_attempts_reached() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state.clone());
@@ -538,7 +538,7 @@ async fn get_play_is_authorized_token() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state.clone());
@@ -572,7 +572,7 @@ async fn get_play_is_not_authorized_token() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),   
     };
     let app = app(app_state.clone());
@@ -603,7 +603,7 @@ async fn get_play_is_not_authorized_token_when_random_path_and_no_token_header()
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state.clone());
@@ -653,7 +653,7 @@ async fn get_play_is_authorized_token_and_ip_is_allowed() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state.clone());
@@ -694,7 +694,7 @@ async fn get_play_is_authorized_token_and_ip_is_not_allowed() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state.clone());
@@ -764,7 +764,7 @@ async fn get_play_is_not_authorized_token_when_no_token() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state.clone());
@@ -794,7 +794,7 @@ async fn drop_import_ok() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state);
@@ -824,7 +824,7 @@ async fn tag_import_returns_not_found_when_called_with_ip_not_accepted() {
         conf,
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
-            DropService::new(None)
+            DropService::new(None, None, None)
         ),
     };
     let app = app(app_state);

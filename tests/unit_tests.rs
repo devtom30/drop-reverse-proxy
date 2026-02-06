@@ -89,11 +89,11 @@ fn check_unarchived_drop_files_should_return_untar_directory_path() {
     let path = "tests/resources/import_path/untar_drop/ok";
     let result = check_unarchived_drop_files(path);
     assert!(result.is_ok());
-    assert_eq!("tests/resources/import_path/untar_drop/ok/drop_ok", result.unwrap());
+    assert_eq!("tests/resources/import_path/untar_drop/ok/drop_ok", result.unwrap().0);
 
     let result = check_unarchived_drop_files(&*(path.to_owned() + "/drop_ok"));
     assert!(result.is_ok());
-    assert_eq!("tests/resources/import_path/untar_drop/ok/drop_ok", result.unwrap())
+    assert_eq!("tests/resources/import_path/untar_drop/ok/drop_ok", result.unwrap().0)
 }
 
 #[test]
@@ -101,7 +101,7 @@ fn check_drop_file_should_return_untar_directory_path() {
     let tar_gz_path = "tests/resources/import_path/correct_tar_gz/drop_ok.tar.gz";
     let result = check_drop_file(&tar_gz_path);
     assert!(result.is_ok());
-    let directory_path = result.unwrap();
+    let directory_path = result.unwrap().0;
     let path = Path::new(&directory_path);
     assert!(path.is_dir());
     assert!(path.parent().unwrap().file_name().unwrap().to_str().unwrap().starts_with("correct_tar_gz_"));

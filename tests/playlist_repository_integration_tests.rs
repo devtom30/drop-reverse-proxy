@@ -1,23 +1,28 @@
-use drop_reverse_proxy::repository::Repo;
+use crate::utils::{create_default_db_config, start_postgres_container};
 use drop_reverse_proxy::repository::playlist::{Playlist, PlaylistRepo};
-use sqlx::postgres::PgPoolOptions;
+use drop_reverse_proxy::repository::Repo;
 use testcontainers::runners::AsyncRunner;
-use testcontainers_modules::postgres::Postgres;
+
+mod utils;
 
 #[tokio::test]
 async fn test_playlist_repo_integration() {
     // 1. Start Postgres container
-    let postgres_container = Postgres::default().start().await.expect("Failed to start Postgres container");
-    let host = postgres_container.get_host().await.expect("Failed to get host");
-    let port = postgres_container.get_host_port_ipv4(5432).await.expect("Failed to get port");
-    let connection_string = format!("postgres://postgres:postgres@{}:{}/postgres", host, port);
+    let db_name = "drop_of_culture";
+    let user = "drop_of_culture";
+    let password = "drop_of_culture";
+    let (_container_guard, host, port) = start_postgres_container(
+        db_name,
+        user,
+        password,
+    ).await.expect("Failed to start Postgres container");
 
     // 2. Setup database pool
-    let pool = PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&connection_string)
+    let db_config = create_default_db_config(host, port, db_name, user, password);
+
+    let pool = drop_reverse_proxy::config::db::create_pool(&db_config)
         .await
-        .expect("Failed to connect to Postgres");
+        .expect("Failed to create database pool");
 
     // 3. Initialize schema
     sqlx::query(
@@ -32,7 +37,9 @@ async fn test_playlist_repo_integration() {
     .await
     .expect("Failed to create table");
 
-    let repo = PlaylistRepo::new(pool);
+    let repo = PlaylistRepo::new(&db_config)
+        .await
+        .expect("Failed to create playlist repository");
 
     // 4. Test save_or_update
     let new_playlist = Playlist {
@@ -43,7 +50,7 @@ async fn test_playlist_repo_integration() {
     <PlaylistRepo as Repo<Playlist>>::save_or_update(&repo, &new_playlist).await.expect("Failed to save playlist");
 
     // 5. Test get
-    let saved_playlist = <PlaylistRepo as Repo<Playlist>>::get(&repo, "1").await.expect("Failed to get playlist");
+    let saved_playlist = <PlaylistRepo as Repo<Playlist>>::get(&repo, 1).await.expect("Failed to get playlist");
     
     assert_eq!(saved_playlist.name, "Test Playlist");
     assert_eq!(saved_playlist.id, 1);

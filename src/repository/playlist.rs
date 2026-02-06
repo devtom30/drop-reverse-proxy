@@ -1,7 +1,9 @@
-use sqlx::{Pool, Postgres};
+use crate::config::db::{create_pool, DatabaseConfig};
 use crate::repository::{Entity, Repo, RepositoryError};
+use derive_new::new;
+use sqlx::{Pool, Postgres};
 
-#[derive(sqlx::FromRow, Debug, Clone, PartialEq)]
+#[derive(sqlx::FromRow, Debug, Clone, PartialEq, new)]
 pub struct Playlist {
     pub id: i32,
     pub name: String,
@@ -13,40 +15,43 @@ impl Entity for Playlist {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct PlaylistRepo {
     pub pool: Pool<Postgres>,
 }
 
 impl PlaylistRepo {
-    pub fn new(pool: Pool<Postgres>) -> Self {
-        Self { pool }
+    pub async fn new(database_config: &DatabaseConfig) -> Result<PlaylistRepo, RepositoryError> {
+        match create_pool(database_config).await {
+            Ok(pool) => Ok(Self { pool }),
+            Err(err) => Err(RepositoryError::DatabaseError(err))
+        }
     }
 }
 
 impl Repo<Playlist> for PlaylistRepo {
-    async fn get(&self, id: &str) -> Result<Playlist, RepositoryError> {
-        let parsed_id = id.parse::<i32>().map_err(|_| RepositoryError::EntityNotFound)?;
+    async fn get(&self, id: i32) -> Result<Playlist, RepositoryError> {
         sqlx::query_as::<_, Playlist>("
 SELECT id, name
 FROM \"playlist\"
 WHERE id = $1
 LIMIT 1
 ")
-            .bind(parsed_id)
+            .bind(id)
             .fetch_one(&self.pool)
             .await
             .map_err(|_| RepositoryError::EntityNotFound)
     }
 
-    async fn save_or_update(&self, playlist: &Playlist) -> Result<(), RepositoryError> {
-        sqlx::query("
+    async fn save_or_update(&self, playlist: &Playlist) -> Result<i32, RepositoryError> {
+        sqlx::query_scalar::<_, i32>("
 INSERT INTO \"playlist\" (name)
 VALUES ($1)
+RETURNING id
     ")
             .bind(playlist.name.clone())
-            .execute(&self.pool)
+            .fetch_one(&self.pool)
             .await
-            .map(|_| ())
             .map_err(|_| RepositoryError::EntityNotSaved)
     }
 }
