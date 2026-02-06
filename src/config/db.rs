@@ -28,7 +28,7 @@ impl Default for DatabaseConfig {
             password: "doc".to_string(),
             max_connections: 10,
             min_connections: 1,
-            connect_timeout: Duration::from_secs(5),
+            connect_timeout: Duration::from_secs(10),
             idle_timeout: Duration::from_secs(600),
             max_lifetime: Duration::from_secs(1800),
         }
@@ -36,7 +36,7 @@ impl Default for DatabaseConfig {
 }
 
 /// Create a configured database pool
-pub async fn create_pool(config: &DatabaseConfig) -> Result {
+pub async fn create_pool(config: &DatabaseConfig) -> Result<PgPool, sqlx::Error> {
     // Build connection options
     let connect_options = PgConnectOptions::new()
         .host(&config.host)

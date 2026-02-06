@@ -1,5 +1,7 @@
-use derive_new::new;
+use crate::config::db::{create_pool, DatabaseConfig};
+use crate::repository::drop::DropRepoError::DatabaseError;
 use crate::repository::{Entity, Repo, RepositoryError};
+use derive_new::new;
 use sqlx::{Pool, Postgres};
 
 #[derive(sqlx::FromRow, Debug, Clone, PartialEq, new)]
@@ -34,18 +36,23 @@ impl Entity for Drop {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DropRepo {
-    url: String,
     pool: Pool<Postgres>,
 }
 
+#[derive(Debug)]
+pub enum DropRepoError {
+    DatabaseError(sqlx::Error),
+}
+
 impl DropRepo {
-    pub fn new(url: String) -> DropRepo {
-        // create db pool
-    }
-    pub fn url(&self) -> &str {
-        &self.url
+    pub async fn new(database_config: &DatabaseConfig) -> Result<DropRepo, DropRepoError>  {
+        match create_pool(database_config).await {
+            Ok(pool) => Ok(Self { pool }),
+            Err(err) => Err(DatabaseError(err))
+        }
+
     }
     pub fn pool(&self) -> &Pool<Postgres> {
         &self.pool

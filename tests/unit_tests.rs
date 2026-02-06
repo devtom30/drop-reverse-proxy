@@ -29,6 +29,8 @@ fn ip_repo_save_or_update_when_exists_and_nb_bad_attempts_is_more_than_zero() {
 fn conf_is_ok() {
     let config_result = create_conf_from_toml_file("tests/resources/conf/ok/app.toml");
 
+    println!("config_result: {:#?}", &config_result.as_ref());
+
     assert!(config_result.is_ok());
     let config = config_result.unwrap();
     assert!(! config.tags().is_empty());
@@ -36,6 +38,13 @@ fn conf_is_ok() {
     assert_eq!("http://localhost:8084", config.redirect_uri());
     assert_eq!("127.0.0.1:8000", config.bind_addr());
     assert_eq!(10, config.max_attempts());
+    assert!(config.db_conf().is_some());
+    assert_eq!("localhost", config.db_conf().unwrap().db_host());
+    assert_eq!(5432, config.db_conf().unwrap().db_port());
+    assert_eq!("drop_of_culture", config.db_conf().unwrap().db_name());
+    assert_eq!("drop_of_culture", config.db_conf().unwrap().db_password());
+    assert_eq!(10, config.db_conf().unwrap().db_pool_size());
+    assert_eq!(10000, config.db_conf().unwrap().db_timeout());
 }
 
 #[test]

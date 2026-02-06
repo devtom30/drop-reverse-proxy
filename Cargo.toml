@@ -21,6 +21,7 @@ figment = { version = "0.10.19", features = ["toml"] }
 flate2 = "1.1.5"
 tar = "0.4.44"
 sqlx = { version = "0.8", features = [ "runtime-tokio", "postgres" ] }
+tracing = "0.1.41"
 
 [dev-dependencies]
 testcontainers = "0.23"

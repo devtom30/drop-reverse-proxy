@@ -1,3 +1,5 @@
+use crate::service::drop::DropService;
+use crate::service::DropServiceT;
 use axum::extract::{ConnectInfo, Path, Request, State};
 use axum::http::header::SET_COOKIE;
 use axum::http::{HeaderValue, StatusCode};
@@ -30,6 +32,7 @@ pub const TAG_ARCHIVE_PREFIX: &str = "drop_";
 
 pub mod repository;
 pub mod service;
+pub mod config;
 
 pub fn app(state: AppState) -> Router {
     Router::new()
@@ -104,7 +107,8 @@ pub struct AppState {
     pub tag_repo: Arc<dyn TagRepo>,
     pub ip_repo: Arc<dyn IpRepo>,
     pub conf: Conf,
-    pub entity_repositories: Vec<RepoType>
+    pub entity_repositories: Vec<RepoType>,
+    pub service_conf: ServiceConf
 }
 
 async fn tag(
@@ -179,7 +183,7 @@ async fn drop_import(
     // check files
     for file in files_to_import {
         if let Ok(drop_import_path) = check_drop_file(&file) {
-            service::drop::DropService::new()
+            // service::drop::DropService::new();
         }
     }
 
@@ -756,13 +760,14 @@ impl IpRepo for InMemoryIpRepo {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, new, Debug)]
 pub struct Conf {
     redirect_uri: String,
     bind_addr: String,
     max_attempts: u8,
     tags: Vec<String>,
-    import_path: String
+    import_path: String,
+    db_conf: Option<DbConf>
 }
 
 impl Conf {
@@ -779,15 +784,15 @@ impl Conf {
         self.max_attempts
     }
 
-    pub fn new(redirect_uri: String, bind_addr: String, max_attempts: u8, tags: Vec<String>, import_path: String) -> Self {
-        Self { redirect_uri, bind_addr, max_attempts, tags, import_path }
-    }
-
     pub fn tags(&self) -> &Vec<String> {
         &self.tags
     }
 
     pub fn import_path(&self) -> &str { &self.import_path }
+
+    pub fn db_conf(&self) -> Option<&DbConf> {
+        self.db_conf.as_ref()
+    }
 }
 
 pub fn create_conf_from_toml_file(relative_path: &str) -> figment::Result<Conf> {
@@ -800,4 +805,51 @@ pub fn create_drop_request_from_toml_file(path: &str) -> figment::Result<DropReq
     Figment::new()
         .merge(Toml::file(path))
         .extract()
+}
+
+#[derive(Clone, new)]
+pub struct ServiceConf {
+    drop_service: DropService
+}
+
+impl ServiceConf {
+    pub fn drop_service(&self) -> &DropService {
+        &self.drop_service
+    }
+}
+
+#[derive(Clone, new, Deserialize, Debug)]
+pub struct DbConf {
+    db_host: String,
+    db_port: u16,
+    db_name: String,
+    db_password: String,
+    db_pool_size: u32,
+    db_timeout: u64
+}
+
+impl DbConf {
+    pub fn db_host(&self) -> &str {
+        &self.db_host
+    }
+
+    pub fn db_port(&self) -> u16 {
+        self.db_port
+    }
+
+    pub fn db_name(&self) -> &str {
+        &self.db_name
+    }
+
+    pub fn db_password(&self) -> &str {
+        &self.db_password
+    }
+
+    pub fn db_pool_size(&self) -> u32 {
+        self.db_pool_size
+    }
+
+    pub fn db_timeout(&self) -> u64 {
+        self.db_timeout
+    }
 }
