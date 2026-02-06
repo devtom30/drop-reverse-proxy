@@ -2,3 +2,12 @@ redirect_uri = 'http://localhost:8084'
 bind_addr = '127.0.0.1:8000'
 max_attempts = 10
 tags = ['jdznjevb', 'xurnxenyoawltkky', 'tag3']
+
+[db_conf]
+db_host = "localhost"
+db_port = 5432
+db_name = "drop_of_culture"
+db_password = "drop_of_culture"
+db_pool_size = 10
+db_timeout = 10000
+

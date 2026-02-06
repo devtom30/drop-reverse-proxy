@@ -1,16 +1,17 @@
 use axum::extract::ConnectInfo;
 use axum::http::{HeaderMap, Request, StatusCode};
 use chrono::NaiveDateTime;
-use drop_reverse_proxy::{app, AppState, Conf, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, IpRepo, IpRepoDB, Tag, TagRepo, TagRepoDB, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
+use drop_reverse_proxy::service::drop::DropService;
+use drop_reverse_proxy::{app, AppState, Conf, InMemoryIpRepo, InMemoryTagRepo, InMemoryTokenRepo, IpRepo, IpRepoDB, ServiceConf, Tag, TagRepo, TagRepoDB, Token, TokenRepo, TokenRepoDB, TOKEN_NAME};
 use http_body_util::Empty;
+use regex::Regex;
+use reqwest::header::SET_COOKIE;
 use std::net::{IpAddr, SocketAddr};
 use std::process::Command;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use regex::Regex;
-use reqwest::header::SET_COOKIE;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -39,13 +40,23 @@ async fn get_tag() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(
+        base_url, 
+        String::from("127.0.0.1:8000"), 
+        10, 
+        Vec::new(), 
+        String::from(""),
+        None
+    );
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state.clone());
 
@@ -89,13 +100,16 @@ async fn get_tag_error() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state);
 
@@ -117,13 +131,16 @@ async fn tag_not_in_list_returns_500_and_no_token_header() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state);
 
@@ -149,13 +166,16 @@ async fn save_and_get_token_from_repo() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state.clone());
 
@@ -415,13 +435,16 @@ async fn save_and_get_token_from_db() {
     let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
     let ip_repo = IpRepoDB::new(&redis_url).expect("failed to create IpRepoDB");
     ip_repo.save_or_update(&IpAddr::from([127,0,0,1]), 0);
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state.clone());
 
@@ -463,13 +486,16 @@ async fn get_tag_should_return_500_when_ip_max_attempts_reached() {
     let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
     let ip_repo = IpRepoDB::new(&redis_url).expect("failed to create IpRepoDB");
     ip_repo.save_or_update(&IpAddr::from([127,0,0,1]), 10);
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state.clone());
 
@@ -504,13 +530,16 @@ async fn get_play_is_authorized_token() {
         tag_ok.to_string()
     );
     token_repo.save_token(&token);
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state.clone());
 
@@ -535,13 +564,16 @@ async fn get_play_is_not_authorized_token() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),   
     };
     let app = app(app_state.clone());
 
@@ -563,13 +595,16 @@ async fn get_play_is_not_authorized_token_when_random_path_and_no_token_header()
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = init_in_memory_tag_repo();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state.clone());
 
@@ -610,13 +645,16 @@ async fn get_play_is_authorized_token_and_ip_is_allowed() {
         tag_ok.to_string()
     );
     token_repo.save_token(&token);
-    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(base_url, String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state.clone());
 
@@ -648,13 +686,16 @@ async fn get_play_is_authorized_token_and_ip_is_not_allowed() {
         tag_ok.to_string()
     );
     token_repo.save_token(&token);
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state.clone());
 
@@ -715,20 +756,19 @@ async fn get_play_is_not_authorized_token_when_no_token() {
     token_repo.save_token(&token);
     let tag_repo = init_redis_tag_repo(&redis_url).expect("failed to init TagRepoDB");
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state.clone());
-
-    let token_repo = InMemoryTokenRepo::default();
-    let tag_repo = InMemoryTagRepo::default();
-
-
+    
     let ip_addr = [127,0,0,1];
     let mut req = Request::builder()
         .uri("/play")
@@ -746,13 +786,16 @@ async fn drop_import_ok() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from("tests/resources/import_path"));
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from("tests/resources/import_path"), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state);
 
@@ -773,13 +816,16 @@ async fn tag_import_returns_not_found_when_called_with_ip_not_accepted() {
     let token_repo = InMemoryTokenRepo::default();
     let tag_repo = InMemoryTagRepo::default();
     let ip_repo = InMemoryIpRepo::default();
-    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""));
+    let conf = Conf::new(String::from(""), String::from("127.0.0.1:8000"), 10, Vec::new(), String::from(""), None);
     let app_state = AppState {
         token_repo: Arc::new(token_repo.clone()),
         tag_repo: Arc::new(tag_repo.clone()),
         ip_repo: Arc::new(ip_repo.clone()),
         conf,
         entity_repositories: Vec::new(),
+        service_conf: ServiceConf::new(
+            DropService::new(None)
+        ),
     };
     let app = app(app_state);
 

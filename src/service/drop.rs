@@ -1,5 +1,6 @@
 use derive_new::new;
 use serde::Deserialize;
+use crate::repository::drop::DropRepo;
 use crate::service::DropServiceT;
 
 #[derive(Debug)]
@@ -43,13 +44,19 @@ impl DropRequest {
     }
 }
 
-#[derive(Clone, Deserialize, Debug, new)]
-pub struct DropService<'a> {
-    drop_repository: &'a dyn DropServiceT
+#[derive(Clone, Debug, new)]
+pub struct DropService {
+    drop_repository: Option<DropRepo>
 }
 
-impl <'a> DropServiceT for DropService<'a> {
+impl DropServiceT for DropService {
     fn create_drop(&self, drop_request: DropRequest) -> Result<(), ImportError> {
         Ok(())
+    }
+}
+
+impl DropService {
+    pub fn drop_repository(&self) -> &Option<DropRepo> {
+        &self.drop_repository
     }
 }
