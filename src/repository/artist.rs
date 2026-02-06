@@ -1,5 +1,6 @@
-use derive_new::new;
+use crate::config::db::{create_pool, DatabaseConfig};
 use crate::repository::{Entity, Repo, RepoByName, RepositoryError};
+use derive_new::new;
 use sqlx::{Pool, Postgres};
 
 #[derive(sqlx::FromRow, Debug, Clone, PartialEq, new)]
@@ -24,39 +25,42 @@ impl Entity for Artist {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ArtistRepo {
     pub pool: Pool<Postgres>,
 }
 
 impl ArtistRepo {
-    pub fn new(pool: Pool<Postgres>) -> Self {
-        Self { pool }
+    pub async fn new(database_config: &DatabaseConfig) -> Result<ArtistRepo, RepositoryError> {
+        match create_pool(database_config).await {
+            Ok(pool) => Ok(Self { pool }),
+            Err(err) => Err(RepositoryError::DatabaseError(err))
+        }
     }
 }
 impl Repo<Artist> for ArtistRepo {
-    async fn get(&self, id: &str) -> Result<Artist, RepositoryError> {
-        let parsed_id = id.parse::<i32>().map_err(|_| RepositoryError::EntityNotFound)?;
+    async fn get(&self, id: i32) -> Result<Artist, RepositoryError> {
         sqlx::query_as::<_, Artist>("
 SELECT id, name
 FROM \"artist\"
 WHERE id = $1
 LIMIT 1
 ")
-            .bind(parsed_id)
+            .bind(id)
             .fetch_one(&self.pool)
             .await
             .map_err(|_| RepositoryError::EntityNotFound)
     }
 
-    async fn save_or_update(&self, artist: &Artist) -> Result<(), RepositoryError> {
-        sqlx::query("
+    async fn save_or_update(&self, artist: &Artist) -> Result<i32, RepositoryError> {
+        sqlx::query_scalar::<_, i32>("
 INSERT INTO \"artist\" (name)
 VALUES ($1)
+RETURNING id
     ")
             .bind(artist.name.clone())
-            .execute(&self.pool)
+            .fetch_one(&self.pool)
             .await
-            .map(|_| ())
             .map_err(|_| RepositoryError::EntityNotSaved)
     }
 }

@@ -6,6 +6,8 @@ use drop_reverse_proxy::{app, create_conf_from_toml_file, AppState, InMemoryIpRe
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use drop_reverse_proxy::repository::artist::ArtistRepo;
+use drop_reverse_proxy::repository::playlist::PlaylistRepo;
 
 #[tokio::main]
 async fn main() {
@@ -37,10 +39,16 @@ async fn main() {
         idle_timeout: Duration::from_secs(100),
         max_lifetime: Duration::from_secs(1800)
     };
-    if let Ok(drop_repository) = DropRepo::new(&db_config).await {
+    if let Ok(drop_repository) = DropRepo::new(&db_config).await
+        && let Ok(playlist_repository) = PlaylistRepo::new(&db_config).await
+        && let Ok(artist_repository) = ArtistRepo::new(&db_config).await {
         println!("Database connection successful");
 
-        let drop_service = DropService::new(Option::from(drop_repository));
+        let drop_service = DropService::new(
+            Some(drop_repository),
+            Some(artist_repository),
+            Some(playlist_repository),
+        );
         let app_state = AppState {
             token_repo: Arc::new(token_repo.clone()),
             tag_repo: Arc::new(tag_repo.clone()),
