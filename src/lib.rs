@@ -186,7 +186,13 @@ async fn drop_import(
     // check files
     for file in files_to_import {
         if let Ok((drop_import_path, drop_request)) = check_drop_file(&file) {
-            state.service_conf.drop_service.create_drop(drop_import_path, drop_request);
+            state.service_conf.drop_service.create_drop(
+                &drop_import_path,
+                drop_request,
+                &state.conf.web_server_path.as_ref().unwrap()
+            )
+                .await
+                .or(Err(AppError::InternalError))?;
         }
     }
 
@@ -770,7 +776,8 @@ pub struct Conf {
     max_attempts: u8,
     tags: Vec<String>,
     import_path: String,
-    db_conf: Option<DbConf>
+    db_conf: Option<DbConf>,
+    web_server_path: Option<String>,
 }
 
 impl Conf {

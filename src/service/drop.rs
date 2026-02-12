@@ -5,6 +5,10 @@ use crate::repository::{Repo, RepoByName};
 use crate::service::DropServiceT;
 use async_trait::async_trait;
 use serde::Deserialize;
+use std::fs;
+
+pub const PLAYLIST_DIR_PREFIX: &str = "playlist_";
+pub const TRACK_FILE_PREFIX: &str = "track_";
 
 #[derive(Debug)]
 pub enum ImportError {
@@ -26,7 +30,9 @@ pub enum ImportError {
     PlaylistRepositoryIsNone,
     CantCreateArtistFromArtistName,
     CantCreateDropFromDropRequest,
-    CantCreatePlaylistFromPlaylistName
+    CantCreatePlaylistFromPlaylistName,
+    CantCreatPlaylistDirectoryInWebServer,
+    CantCopyTrackFileToPlaylistDirectory,
 }
 
 #[derive(Clone, Deserialize, )]
@@ -139,8 +145,9 @@ where
 {
     async fn create_drop(
         &self,
-        drop_import_path: String,
+        drop_import_path: &String,
         drop_request: DropRequest,
+        web_server_path: &String
     ) -> Result<(), ImportError> {
 
         // artist_id XOR artist_name
@@ -173,8 +180,26 @@ where
             .await
             .or(Err(ImportError::CantCreateDropFromDropRequest))?;
 
-        //TODO moving the files
-
+        // create playlist directory in web server
+        let mut playlist_dir_path = web_server_path.clone();
+        playlist_dir_path.push_str("/");
+        playlist_dir_path.push_str(PLAYLIST_DIR_PREFIX);
+        playlist_dir_path.push_str(&playlist_id.to_string());
+        fs::create_dir(&playlist_dir_path).or(Err(ImportError::CantCreatePlaylistFromPlaylistName))?;
+        // move the files
+        let mut i = 1;
+        for track in drop_request.tracks.iter() {
+            let mut track_import_path = drop_import_path.clone();
+            track_import_path.push_str("/");
+            track_import_path.push_str(track);
+            let mut playlist_track_path = playlist_dir_path.clone();
+            playlist_track_path.push_str("/");
+            playlist_track_path.push_str(TRACK_FILE_PREFIX);
+            playlist_track_path.push_str(&i.to_string());
+            fs::copy(track_import_path, playlist_track_path)
+                .or(Err(ImportError::CantCopyTrackFileToPlaylistDirectory))?;
+            i += 1;
+        }
         Ok(())
     }
 }
