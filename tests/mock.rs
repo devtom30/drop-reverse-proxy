@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use drop_reverse_proxy::repository::drop::Drop;
-use drop_reverse_proxy::repository::{Repo, RepositoryError};
+use drop_reverse_proxy::repository::{Repo, RepoByName, RepositoryError};
 use drop_reverse_proxy::repository::artist::Artist;
 use drop_reverse_proxy::repository::playlist::Playlist;
 
@@ -26,7 +26,7 @@ impl Repo<Drop> for DropRepoMock {
 
 pub struct ArtistRepoMock;
 #[async_trait]
-impl Repo<Artist> for ArtistRepoMock {
+impl RepoByName<Artist> for ArtistRepoMock {
     async fn get(&self, id: i32) -> Result<Artist, RepositoryError> {
         match id {
             1 => Ok(Artist::new(1, "Artist 1".to_string())),
@@ -37,6 +37,10 @@ impl Repo<Artist> for ArtistRepoMock {
 
     async fn save_or_update(&self, entity: &Artist) -> Result<i32, RepositoryError> {
         Ok(1)
+    }
+
+    async fn get_by_name(&self, name: &str) -> Result<Artist, RepositoryError> {
+        Ok(Artist::new(1, name.to_string()))
     }
 }
 

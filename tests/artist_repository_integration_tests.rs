@@ -1,7 +1,7 @@
 use crate::utils::{create_default_db_config, start_postgres_container};
 use drop_reverse_proxy::repository::artist::{Artist, ArtistRepo};
-use drop_reverse_proxy::repository::Repo;
-use testcontainers::runners::AsyncRunner;
+use drop_reverse_proxy::repository::{RepoByName};
+use std::sync::Arc;
 
 mod utils;
 
@@ -37,17 +37,17 @@ async fn test_artist_repo_integration() {
     .await
     .expect("Failed to create table");
 
-    let repo = ArtistRepo::new(&db_config)
+    let repo = Arc::new(ArtistRepo::new(&db_config)
         .await
-        .expect("Failed to create artist repository");
+        .expect("Failed to create artist repository"));
 
     // 4. Test save_or_update
     let new_artist = Artist::new(0, "Test Artist".to_string());
 
-    let artist_id = <ArtistRepo as Repo<Artist>>::save_or_update(&repo, &new_artist).await.expect("Failed to save artist");
+    let artist_id = repo.save_or_update(&new_artist).await.expect("Failed to save artist");
 
     // 5. Test get
-    let saved_artist = <ArtistRepo as Repo<Artist>>::get(&repo, artist_id).await.expect("Failed to get artist");
+    let saved_artist = repo.get(artist_id).await.expect("Failed to get artist");
     
     assert_eq!(saved_artist.name(), "Test Artist");
     assert_eq!(saved_artist.id(), 1);

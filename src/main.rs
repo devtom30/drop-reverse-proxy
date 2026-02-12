@@ -6,7 +6,7 @@ use drop_reverse_proxy::{app, create_conf_from_toml_file, AppState, InMemoryIpRe
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use drop_reverse_proxy::repository::Repo;
+use drop_reverse_proxy::repository::{Repo, RepoByName};
 use drop_reverse_proxy::repository::artist::ArtistRepo;
 use drop_reverse_proxy::repository::playlist::PlaylistRepo;
 
@@ -47,7 +47,7 @@ async fn main() {
 
         let drop_service = DropService::new(
             Arc::new(drop_repository) as Arc<dyn Repo<drop_reverse_proxy::repository::drop::Drop>>,
-            Arc::new(artist_repository) as Arc<dyn Repo<drop_reverse_proxy::repository::artist::Artist>>,
+            Arc::new(artist_repository) as Arc<dyn RepoByName<drop_reverse_proxy::repository::artist::Artist>>,
             Arc::new(playlist_repository) as Arc<dyn Repo<drop_reverse_proxy::repository::playlist::Playlist>>,
         );
         let app_state = AppState {

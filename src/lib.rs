@@ -28,7 +28,7 @@ use tar::Archive;
 use uuid::Uuid;
 use crate::repository::artist::Artist;
 use crate::repository::playlist::Playlist;
-use crate::repository::Repo;
+use crate::repository::{Repo, RepoByName};
 
 pub const TOKEN_NAME: &str = "dop_token";
 pub const TAG_ARCHIVE_PREFIX: &str = "drop_";
@@ -186,7 +186,7 @@ async fn drop_import(
     // check files
     for file in files_to_import {
         if let Ok((drop_import_path, drop_request)) = check_drop_file(&file) {
-            // state.service_conf.drop_service.create_drop(drop_import_path, drop_request);
+            state.service_conf.drop_service.create_drop(drop_import_path, drop_request);
         }
     }
 
@@ -814,7 +814,7 @@ pub fn create_drop_request_from_toml_file(path: &str) -> figment::Result<DropReq
 pub struct ServiceConf {
     drop_service: DropService<
         Arc<dyn Repo<repository::drop::Drop>>,
-        Arc<dyn Repo<Artist>>,
+        Arc<dyn RepoByName<Artist>>,
         Arc<dyn Repo<Playlist>>,
     >,
 }
@@ -832,7 +832,7 @@ impl ServiceConf {
         &self,
     ) -> &DropService<
         Arc<dyn Repo<repository::drop::Drop>>,
-        Arc<dyn Repo<Artist>>,
+        Arc<dyn RepoByName<Artist>>,
         Arc<dyn Repo<Playlist>>,
     > {
         &self.drop_service
