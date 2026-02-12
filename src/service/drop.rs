@@ -2,10 +2,11 @@ use crate::repository::artist::Artist;
 use crate::repository::drop::Drop;
 use crate::repository::playlist::Playlist;
 use crate::repository::{Repo, RepoByName};
-use crate::service::DropServiceT;
+pub use crate::service::DropServiceT;
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::fs;
+use derive_new::new;
 
 pub const PLAYLIST_DIR_PREFIX: &str = "playlist_";
 pub const TRACK_FILE_PREFIX: &str = "track_";
@@ -35,7 +36,7 @@ pub enum ImportError {
     CantCopyTrackFileToPlaylistDirectory,
 }
 
-#[derive(Clone, Deserialize, )]
+#[derive(Clone, Deserialize, new)]
 pub struct DropRequest {
     artist_id: Option<i32>,
     artist_name: Option<String>,
