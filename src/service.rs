@@ -12,7 +12,8 @@ impl<T: Repo<Artist> + RepoByName<Artist> + Send + Sync> ArtistRepoTrait for T {
 pub trait DropServiceT {
     async fn create_drop(
         &self,
-        drop_import_path: String,
+        drop_import_path: &String,
         drop_request: DropRequest,
+        web_server_path: &String
     ) -> Result<(), ImportError>;
 }
