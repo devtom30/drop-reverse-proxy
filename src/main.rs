@@ -6,6 +6,7 @@ use drop_reverse_proxy::{app, create_conf_from_toml_file, AppState, InMemoryIpRe
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use drop_reverse_proxy::repository::Repo;
 use drop_reverse_proxy::repository::artist::ArtistRepo;
 use drop_reverse_proxy::repository::playlist::PlaylistRepo;
 
@@ -45,9 +46,9 @@ async fn main() {
         println!("Database connection successful");
 
         let drop_service = DropService::new(
-            Some(drop_repository),
-            Some(artist_repository),
-            Some(playlist_repository),
+            Arc::new(drop_repository) as Arc<dyn Repo<drop_reverse_proxy::repository::drop::Drop>>,
+            Arc::new(artist_repository) as Arc<dyn Repo<drop_reverse_proxy::repository::artist::Artist>>,
+            Arc::new(playlist_repository) as Arc<dyn Repo<drop_reverse_proxy::repository::playlist::Playlist>>,
         );
         let app_state = AppState {
             token_repo: Arc::new(token_repo.clone()),
@@ -55,7 +56,7 @@ async fn main() {
             ip_repo: Arc::new(ip_repo),
             conf,
             entity_repositories: Vec::new(),
-            service_conf: ServiceConf::new(drop_service.clone()),
+            service_conf: ServiceConf::new(drop_service),
         };
         axum::serve(
             listener,

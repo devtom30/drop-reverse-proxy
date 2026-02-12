@@ -1,9 +1,9 @@
-use crate::repository::artist::ArtistRepo;
-use crate::repository::drop::{Drop, DropRepo};
-use crate::repository::playlist::{Playlist, PlaylistRepo};
+use crate::repository::artist::Artist;
+use crate::repository::drop::Drop;
+use crate::repository::playlist::Playlist;
 use crate::repository::{Repo, RepoByName};
 use crate::service::DropServiceT;
-use derive_new::new;
+use async_trait::async_trait;
 use serde::Deserialize;
 
 #[derive(Debug)]
@@ -55,27 +55,93 @@ impl DropRequest {
     }
 }
 
-#[derive(Clone, Debug, new)]
-pub struct DropService {
-    drop_repository: Option<DropRepo>,
-    artist_repository: Option<ArtistRepo>,
-    playlist_repository: Option<PlaylistRepo>,
+#[derive(Debug, Deserialize,)]
+pub struct DropService<T, U, V>
+where
+    T: Repo<Drop> + Send + Sync,
+    U: Repo<Artist> + Send + Sync,
+    V: Repo<Playlist> + Send + Sync,
+{
+    drop_repository: T,
+    artist_repository: U,
+    playlist_repository: V,
 }
 
-impl DropServiceT for DropService {
-    async fn create_drop(&self, drop_import_path: String, drop_request: DropRequest) -> Result<(), ImportError> {
-        if self.drop_repository.is_none() {
+impl<T, U, V> Clone for DropService<T, U, V>
+where
+    T: Repo<Drop> + Send + Sync + Clone,
+    U: Repo<Artist> + Send + Sync + Clone,
+    V: Repo<Playlist> + Send + Sync + Clone, {
+    fn clone(&self) -> Self {
+        DropService::new(
+            self.drop_repository.clone(),
+            self.artist_repository.clone(),
+            self.playlist_repository.clone()
+        )
+    }
+}
+
+impl<T, U, V> DropService<T, U, V>
+where
+    T: Repo<Drop> + Send + Sync,
+    U: Repo<Artist> + Send + Sync,
+    V: Repo<Playlist> + Send + Sync,
+{
+    pub fn new(
+        drop_repository: T,
+        artist_repository: U,
+        playlist_repository: V,
+    ) -> DropService<T, U, V>
+    where
+        T: Sized,
+        U: Sized,
+        V: Sized,
+    {
+        /*if drop_repository.drop() {
             println!("drop repository not set, can't create drop");
             return Err(ImportError::DropRepositoryIsNone)
         }
-        if self.artist_repository.is_none() {
+        if artist_repository.is_none() {
             println!("artist repository not set, can't create drop");
             return Err(ImportError::ArtistRepositoryIsNone)
         }
-        if self.playlist_repository.is_none() {
+        if playlist_repository.is_none() {
             println!("playlist repository not set, can't create drop");
             return Err(ImportError::PlaylistRepositoryIsNone)
+        }*/
+
+        Self {
+            drop_repository,
+            artist_repository,
+            playlist_repository,
         }
+    }
+
+    pub fn drop_repository(&self) -> &T {
+        &self.drop_repository
+    }
+
+    pub fn artist_repository(&self) -> &U {
+        &self.artist_repository
+    }
+
+    pub fn playlist_repository(&self) -> &V {
+        &self.playlist_repository
+    }
+}
+
+#[async_trait]
+impl<T, U, V> DropServiceT for DropService<T, U, V>
+where
+    T: Repo<Drop> + Send + Sync,
+    U: Repo<Artist> + RepoByName<Artist> + Send + Sync,
+    V: Repo<Playlist> + Send + Sync,
+{
+    async fn create_drop(
+        &self,
+        drop_import_path: String,
+        drop_request: DropRequest,
+    ) -> Result<(), ImportError> {
 
         // artist_id XOR artist_name
         if drop_request.artist_id.is_some() && drop_request.artist_name.is_some() {
@@ -85,24 +151,24 @@ impl DropServiceT for DropService {
         // artist_id exists
         if let Some(artist_id) = drop_request.artist_id {
             // check artist_id exists
-            drop_artist_id = self.artist_repository.as_ref().unwrap().get(artist_id)
+            drop_artist_id = self.artist_repository.get(artist_id)
                 .await
                 .or(Err(ImportError::InvalidArtistId))?.id();
         } else if let Some(artist_name) = drop_request.artist_name {
             // check artist_name exists
-            drop_artist_id = self.artist_repository.as_ref().unwrap().get_by_name(&artist_name)
+            drop_artist_id = self.artist_repository.get_by_name(&artist_name)
                 .await
                 .or(Err(ImportError::CantCreateArtistFromArtistName))?.id();
         }
 
         // create playlist
-        let playlist_id = self.playlist_repository.as_ref().unwrap()
+        let playlist_id = self.playlist_repository
             .save_or_update(&Playlist::new(0, drop_request.playlist_name))
             .await
             .or(Err(ImportError::CantCreatePlaylistFromPlaylistName))?;
 
         // create drop
-        self.drop_repository.as_ref().unwrap()
+        self.drop_repository
             .save_or_update(&Drop::new(0, drop_artist_id, 0, playlist_id))
             .await
             .or(Err(ImportError::CantCreateDropFromDropRequest))?;
@@ -110,19 +176,5 @@ impl DropServiceT for DropService {
         //TODO moving the files
 
         Ok(())
-    }
-}
-
-impl DropService {
-    pub fn drop_repository(&self) -> &Option<DropRepo> {
-        &self.drop_repository
-    }
-
-    pub fn artist_repository(&self) -> &Option<ArtistRepo> {
-        &self.artist_repository
-    }
-
-    pub fn playlist_repository(&self) -> &Option<PlaylistRepo> {
-        &self.playlist_repository
     }
 }

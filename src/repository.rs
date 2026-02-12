@@ -1,3 +1,9 @@
+use std::sync::Arc;
+use async_trait::async_trait;
+use crate::repository::artist::{Artist, ArtistRepo};
+use crate::repository::drop::DropRepo;
+use crate::repository::playlist::PlaylistRepo;
+
 pub mod drop;
 pub mod artist;
 pub mod playlist;
@@ -11,16 +17,47 @@ pub enum RepositoryError {
     EntityNotSaved,
     DatabaseError(sqlx::Error),
 }
-pub trait Repo<E: Entity> {
+#[async_trait]
+pub trait Repo<E: Entity>: Send + Sync {
     async fn get(&self, id: i32) -> Result<E, RepositoryError>;
     async fn save_or_update(&self, entity: &E) -> Result<i32, RepositoryError>;
 }
 
-pub trait RepoByName<E: Entity> {
+#[async_trait]
+impl<E: Entity + Sync> Repo<E> for Box<dyn Repo<E>> {
+    async fn get(&self, id: i32) -> Result<E, RepositoryError> {
+        self.as_ref().get(id).await
+    }
+
+    async fn save_or_update(&self, entity: &E) -> Result<i32, RepositoryError> {
+        self.as_ref().save_or_update(entity).await
+    }
+}
+
+#[async_trait]
+impl<E: Entity + Sync> Repo<E> for Arc<dyn Repo<E>> {
+    async fn get(&self, id: i32) -> Result<E, RepositoryError> {
+        self.as_ref().get(id).await
+    }
+
+    async fn save_or_update(&self, entity: &E) -> Result<i32, RepositoryError> {
+        self.as_ref().save_or_update(entity).await
+    }
+}
+
+#[async_trait]
+pub trait RepoByName<E: Entity>: Send + Sync {
     async fn get_by_name(&self, name: &str) -> Result<E, RepositoryError>;
 }
 
-#[derive(Clone)]
+#[async_trait]
+impl<E: Entity> RepoByName<E> for Box<dyn RepoByName<E>> {
+    async fn get_by_name(&self, name: &str) -> Result<E, RepositoryError> {
+        self.as_ref().get_by_name(name).await
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum RepoType {
     Artist(std::sync::Arc<crate::repository::artist::ArtistRepo>),
     Drop(std::sync::Arc<crate::repository::drop::DropRepo>),
