@@ -59,7 +59,7 @@ impl DropRequest {
 pub struct DropService<T, U, V>
 where
     T: Repo<Drop> + Send + Sync,
-    U: Repo<Artist> + Send + Sync,
+    U: RepoByName<Artist> + Send + Sync,
     V: Repo<Playlist> + Send + Sync,
 {
     drop_repository: T,
@@ -70,7 +70,7 @@ where
 impl<T, U, V> Clone for DropService<T, U, V>
 where
     T: Repo<Drop> + Send + Sync + Clone,
-    U: Repo<Artist> + Send + Sync + Clone,
+    U: RepoByName<Artist> + Send + Sync + Clone,
     V: Repo<Playlist> + Send + Sync + Clone, {
     fn clone(&self) -> Self {
         DropService::new(
@@ -84,7 +84,7 @@ where
 impl<T, U, V> DropService<T, U, V>
 where
     T: Repo<Drop> + Send + Sync,
-    U: Repo<Artist> + Send + Sync,
+    U: RepoByName<Artist> + Send + Sync,
     V: Repo<Playlist> + Send + Sync,
 {
     pub fn new(
@@ -134,7 +134,7 @@ where
 impl<T, U, V> DropServiceT for DropService<T, U, V>
 where
     T: Repo<Drop> + Send + Sync,
-    U: Repo<Artist> + RepoByName<Artist> + Send + Sync,
+    U: RepoByName<Artist> + Send + Sync,
     V: Repo<Playlist> + Send + Sync,
 {
     async fn create_drop(

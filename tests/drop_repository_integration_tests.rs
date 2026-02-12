@@ -1,13 +1,8 @@
 use crate::utils::{create_default_db_config, start_postgres_container};
 use drop_reverse_proxy::repository::drop::{Drop, DropRepo};
 use drop_reverse_proxy::repository::Repo;
-use testcontainers::runners::AsyncRunner;
-use testcontainers::ContainerAsync;
-use testcontainers_modules::postgres::Postgres;
 
 mod utils;
-
-struct ContainerGuard(ContainerAsync<Postgres>);
 
 #[tokio::test]
 async fn should_insert_data() {

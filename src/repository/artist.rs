@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use async_trait::async_trait;
 use crate::config::db::{create_pool, DatabaseConfig};
-use crate::repository::{Entity, Repo, RepoByName, RepositoryError};
+use crate::repository::{Entity, RepoByName, RepositoryError};
 use derive_new::new;
 use sqlx::{Pool, Postgres};
 
@@ -41,7 +41,7 @@ impl ArtistRepo {
     }
 }
 #[async_trait]
-impl Repo<Artist> for ArtistRepo {
+impl RepoByName<Artist> for ArtistRepo {
     async fn get(&self, id: i32) -> Result<Artist, RepositoryError> {
         sqlx::query_as::<_, Artist>("
 SELECT id, name
@@ -66,28 +66,7 @@ RETURNING id
             .await
             .map_err(|_| RepositoryError::EntityNotSaved)
     }
-}
 
-#[async_trait]
-impl Repo<Artist> for Arc<ArtistRepo> {
-    async fn get(&self, id: i32) -> Result<Artist, RepositoryError> {
-        self.as_ref().get(id).await
-    }
-
-    async fn save_or_update(&self, entity: &Artist) -> Result<i32, RepositoryError> {
-        self.as_ref().save_or_update(entity).await
-    }
-}
-
-#[async_trait]
-impl RepoByName<Artist> for Arc<ArtistRepo> {
-    async fn get_by_name(&self, name: &str) -> Result<Artist, RepositoryError> {
-        self.as_ref().get_by_name(name).await
-    }
-}
-
-#[async_trait]
-impl RepoByName<Artist> for ArtistRepo {
     async fn get_by_name(&self, name: &str) -> Result<Artist, RepositoryError> {
         sqlx::query_as::<_, Artist>("
 SELECT id, name
@@ -99,5 +78,20 @@ LIMIT 1
             .fetch_one(&self.pool)
             .await
             .map_err(|_| RepositoryError::EntityNotFound)
+    }
+}
+
+#[async_trait]
+impl RepoByName<Artist> for Arc<ArtistRepo> {
+    async fn get(&self, id: i32) -> Result<Artist, RepositoryError> {
+        self.as_ref().get(id).await
+    }
+
+    async fn save_or_update(&self, entity: &Artist) -> Result<i32, RepositoryError> {
+        self.as_ref().save_or_update(entity).await
+    }
+
+    async fn get_by_name(&self, name: &str) -> Result<Artist, RepositoryError> {
+        self.as_ref().get_by_name(name).await
     }
 }

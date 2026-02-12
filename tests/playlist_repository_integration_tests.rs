@@ -1,7 +1,6 @@
 use crate::utils::{create_default_db_config, start_postgres_container};
 use drop_reverse_proxy::repository::playlist::{Playlist, PlaylistRepo};
 use drop_reverse_proxy::repository::Repo;
-use testcontainers::runners::AsyncRunner;
 
 mod utils;
 
