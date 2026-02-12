@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use async_trait::async_trait;
 use crate::config::db::{create_pool, DatabaseConfig};
 use crate::repository::{Entity, Repo, RepositoryError};
 use derive_new::new;
@@ -29,6 +31,7 @@ impl PlaylistRepo {
     }
 }
 
+#[async_trait]
 impl Repo<Playlist> for PlaylistRepo {
     async fn get(&self, id: i32) -> Result<Playlist, RepositoryError> {
         sqlx::query_as::<_, Playlist>("
@@ -53,6 +56,17 @@ RETURNING id
             .fetch_one(&self.pool)
             .await
             .map_err(|_| RepositoryError::EntityNotSaved)
+    }
+}
+
+#[async_trait]
+impl Repo<Playlist> for Arc<PlaylistRepo> {
+    async fn get(&self, id: i32) -> Result<Playlist, RepositoryError> {
+        self.as_ref().get(id).await
+    }
+
+    async fn save_or_update(&self, entity: &Playlist) -> Result<i32, RepositoryError> {
+        self.as_ref().save_or_update(entity).await
     }
 }
 

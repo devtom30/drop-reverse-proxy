@@ -26,6 +26,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tar::Archive;
 use uuid::Uuid;
+use crate::repository::artist::Artist;
+use crate::repository::playlist::Playlist;
+use crate::repository::Repo;
 
 pub const TOKEN_NAME: &str = "dop_token";
 pub const TAG_ARCHIVE_PREFIX: &str = "drop_";
@@ -183,7 +186,7 @@ async fn drop_import(
     // check files
     for file in files_to_import {
         if let Ok((drop_import_path, drop_request)) = check_drop_file(&file) {
-            state.service_conf.drop_service.create_drop(drop_import_path, drop_request);
+            // state.service_conf.drop_service.create_drop(drop_import_path, drop_request);
         }
     }
 
@@ -807,13 +810,31 @@ pub fn create_drop_request_from_toml_file(path: &str) -> figment::Result<DropReq
         .extract()
 }
 
-#[derive(Clone, new)]
+#[derive(new)]
 pub struct ServiceConf {
-    drop_service: DropService
+    drop_service: DropService<
+        Arc<dyn Repo<repository::drop::Drop>>,
+        Arc<dyn Repo<Artist>>,
+        Arc<dyn Repo<Playlist>>,
+    >,
+}
+
+impl Clone for ServiceConf {
+    fn clone(&self) -> Self {
+        Self {
+            drop_service: self.drop_service.clone()
+        }
+    }
 }
 
 impl ServiceConf {
-    pub fn drop_service(&self) -> &DropService {
+    pub fn drop_service(
+        &self,
+    ) -> &DropService<
+        Arc<dyn Repo<repository::drop::Drop>>,
+        Arc<dyn Repo<Artist>>,
+        Arc<dyn Repo<Playlist>>,
+    > {
         &self.drop_service
     }
 }

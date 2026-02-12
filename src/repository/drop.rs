@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use async_trait::async_trait;
 use crate::config::db::{create_pool, DatabaseConfig};
 use crate::repository::{Entity, Repo, RepositoryError};
 use derive_new::new;
@@ -58,6 +60,7 @@ impl DropRepo {
     }
 }
 
+#[async_trait]
 impl Repo<Drop> for DropRepo {
     async fn get(&self, id: i32) -> Result<Drop, RepositoryError> {
         sqlx::query_as::<_, Drop>("
@@ -89,5 +92,16 @@ RETURNING id
             .fetch_one(&self.pool)
             .await
             .map_err(|_| RepositoryError::EntityNotSaved)
+    }
+}
+
+#[async_trait]
+impl Repo<Drop> for Arc<DropRepo> {
+    async fn get(&self, id: i32) -> Result<Drop, RepositoryError> {
+        self.as_ref().get(id).await
+    }
+
+    async fn save_or_update(&self, entity: &Drop) -> Result<i32, RepositoryError> {
+        self.as_ref().save_or_update(entity).await
     }
 }
