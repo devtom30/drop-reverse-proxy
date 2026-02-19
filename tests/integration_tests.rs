@@ -1,3 +1,5 @@
+use crate::mock::repository::drop::DropRepoMock;
+use crate::utils::{init_apache_http2_container, DockerGuard};
 use axum::extract::ConnectInfo;
 use axum::http::{HeaderMap, Request, StatusCode};
 use chrono::NaiveDateTime;
@@ -14,8 +16,8 @@ use std::thread;
 use std::time::Duration;
 use tower::ServiceExt;
 use uuid::Uuid;
-use mock::{ArtistRepoMock, DropRepoMock, PlaylistRepoMock};
-use crate::utils::{init_apache_http2_container, DockerGuard};
+use crate::mock::repository::artist::ArtistRepoMock;
+use crate::mock::repository::playlist::PlaylistRepoMock;
 
 mod mock;
 mod utils;
@@ -62,9 +64,9 @@ async fn get_tag() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -119,9 +121,9 @@ async fn get_tag_error() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -154,9 +156,9 @@ async fn tag_not_in_list_returns_500_and_no_token_header() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -193,9 +195,9 @@ async fn save_and_get_token_from_repo() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -342,9 +344,9 @@ async fn save_and_get_token_from_db() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -397,9 +399,9 @@ async fn get_tag_should_return_500_when_ip_max_attempts_reached() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -445,9 +447,9 @@ async fn get_play_is_authorized_token() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -483,9 +485,9 @@ async fn get_play_is_not_authorized_token() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),   
     };
@@ -518,9 +520,9 @@ async fn get_play_is_not_authorized_token_when_random_path_and_no_token_header()
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -572,9 +574,9 @@ async fn get_play_is_authorized_token_and_ip_is_allowed() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -617,9 +619,9 @@ async fn get_play_is_authorized_token_and_ip_is_not_allowed() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -691,9 +693,9 @@ async fn get_play_is_not_authorized_token_when_no_token() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -725,9 +727,9 @@ async fn drop_import_ok() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };
@@ -758,9 +760,9 @@ async fn tag_import_returns_not_found_when_called_with_ip_not_accepted() {
         entity_repositories: Vec::new(),
         service_conf: ServiceConf::new(
             DropService::new(
-                Arc::new(DropRepoMock),
-                Arc::new(ArtistRepoMock),
-                Arc::new(PlaylistRepoMock),
+                Arc::new(DropRepoMock::new()),
+                Arc::new(ArtistRepoMock::new()),
+                Arc::new(PlaylistRepoMock::new()),
             )
         ),
     };

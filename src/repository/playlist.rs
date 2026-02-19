@@ -11,6 +11,12 @@ pub struct Playlist {
     pub name: String,
 }
 
+impl Playlist {
+    pub fn id(&self) -> i32 {
+        self.id
+    }
+}
+
 impl Entity for Playlist {
     fn id(&self) -> String {
         self.id.to_string()
