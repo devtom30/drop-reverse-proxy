@@ -3,17 +3,18 @@ use drop_reverse_proxy::repository::drop::Drop;
 use drop_reverse_proxy::repository::Repo;
 use drop_reverse_proxy::repository::RepositoryError;
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
+#[derive(Clone)]
 pub struct DropRepoMock {
-    map: RwLock<HashMap<i32, Drop>>
+    map: Arc<RwLock<HashMap<i32, Drop>>>
 }
 impl DropRepoMock {
     pub fn new() -> Self {
-        Self { map: RwLock::new(HashMap::new()) }
+        Self { map: Arc::new(RwLock::new(HashMap::new())) }
     }
 
-    pub fn map(&self) -> &RwLock<HashMap<i32, Drop>> {
+    pub fn map(&self) -> &Arc<RwLock<HashMap<i32, Drop>>> {
         &self.map
     }
 }
@@ -28,9 +29,32 @@ impl Repo<Drop> for DropRepoMock {
     }
 
     async fn save_or_update(&self, entity: &Drop) -> Result<i32, RepositoryError> {
-        match self.map.write().unwrap().insert(entity.id(), entity.clone()) {
-            None => { Err(RepositoryError::EntityNotSaved) }
-            Some(_) => { Ok(entity.id()) }
-        }
+        self.map.write().unwrap().insert(entity.id(), entity.clone());
+        Ok(entity.id())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    pub fn drop_repo_mock() {
+        let drop_repo = DropRepoMock::new();
+        assert_eq!(drop_repo.map().read().unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    pub async fn drop_repo_mock_get_save() {
+        let drop_repo = DropRepoMock::new();
+        let drop = Drop::new(
+            0,
+            10,
+            1,
+            2
+        );
+        let save_result = drop_repo.save_or_update(&drop).await;
+        assert!(save_result.is_ok());
+        assert_eq!(drop_repo.get(0).await.unwrap(), drop);
     }
 }

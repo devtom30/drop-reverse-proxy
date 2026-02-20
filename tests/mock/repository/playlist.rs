@@ -2,17 +2,18 @@ use async_trait::async_trait;
 use drop_reverse_proxy::repository::playlist::Playlist;
 use drop_reverse_proxy::repository::{Repo, RepositoryError};
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
+#[derive(Clone)]
 pub struct PlaylistRepoMock {
-    map: RwLock<HashMap<i32, Playlist>>
+    map: Arc<RwLock<HashMap<i32, Playlist>>>
 }
 impl PlaylistRepoMock {
     pub fn new() -> Self {
-        Self { map: RwLock::new(HashMap::new()) }
+        Self { map: Arc::new(RwLock::new(HashMap::new())) }
     }
 
-    pub fn map(&self) -> &RwLock<HashMap<i32, Playlist>> {
+    pub fn map(&self) -> &Arc<RwLock<HashMap<i32, Playlist>>> {
         &self.map
     }
 }
@@ -27,9 +28,7 @@ impl Repo<Playlist> for PlaylistRepoMock {
     }
 
     async fn save_or_update(&self, entity: &Playlist) -> Result<i32, RepositoryError> {
-        match self.map.write().unwrap().insert(entity.id(), entity.clone()) {
-            None => { Err(RepositoryError::EntityNotSaved) }
-            Some(_) => { Ok(entity.id()) }
-        }
+        self.map.write().unwrap().insert(entity.id(), entity.clone());
+        Ok(entity.id())
     }
 }

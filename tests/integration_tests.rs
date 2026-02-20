@@ -1,4 +1,6 @@
+use crate::mock::repository::artist::ArtistRepoMock;
 use crate::mock::repository::drop::DropRepoMock;
+use crate::mock::repository::playlist::PlaylistRepoMock;
 use crate::utils::{init_apache_http2_container, DockerGuard};
 use axum::extract::ConnectInfo;
 use axum::http::{HeaderMap, Request, StatusCode};
@@ -16,10 +18,9 @@ use std::thread;
 use std::time::Duration;
 use tower::ServiceExt;
 use uuid::Uuid;
-use crate::mock::repository::artist::ArtistRepoMock;
-use crate::mock::repository::playlist::PlaylistRepoMock;
 
 mod mock;
+pub mod service;
 mod utils;
 
 fn init_in_memory_tag_repo() -> InMemoryTagRepo {
