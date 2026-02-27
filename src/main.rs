@@ -23,23 +23,20 @@ async fn main() {
     let ip_repo = InMemoryIpRepo::default();
     //tag_repo.save(&drop_reverse_proxy::Tag::new("tag1".to_string(), chrono::NaiveDateTime::default()));
 
-    let db_name = "drop_of_culture";
-    let user = "drop_of_culture";
-    let password = "drop_of_culture";
-    let host = "localhost";
-    let port = 5432;
+    let db_conf = conf.db_conf().expect("db_conf not found in app.toml");
     let db_config = DatabaseConfig {
-        host: host.to_string(),
-        port: port as u16,
-        database: db_name.to_string(),
-        username: user.to_string(),
-        password: password.to_string(),
+        host: db_conf.db_host().to_string(),
+        port: db_conf.db_port(),
+        database: db_conf.db_name().to_string(),
+        username: db_conf.db_user().to_string(),
+        password: db_conf.db_password().to_string(),
         max_connections: 10,
         min_connections: 1,
         connect_timeout: Duration::from_secs(5),
         idle_timeout: Duration::from_secs(100),
         max_lifetime: Duration::from_secs(1800)
     };
+
     if let Ok(drop_repository) = DropRepo::new(&db_config).await
         && let Ok(playlist_repository) = PlaylistRepo::new(&db_config).await
         && let Ok(artist_repository) = ArtistRepo::new(&db_config).await {
@@ -62,5 +59,7 @@ async fn main() {
             listener,
             app(app_state).into_make_service_with_connect_info::<SocketAddr>()
         ).await.unwrap();
+    } else {
+        panic!("Database connection failed");
     }
 }

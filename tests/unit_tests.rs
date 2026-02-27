@@ -42,6 +42,7 @@ fn conf_is_ok() {
     assert_eq!("localhost", config.db_conf().unwrap().db_host());
     assert_eq!(5432, config.db_conf().unwrap().db_port());
     assert_eq!("drop_of_culture", config.db_conf().unwrap().db_name());
+    assert_eq!("drop_of_culture", config.db_conf().unwrap().db_user());
     assert_eq!("drop_of_culture", config.db_conf().unwrap().db_password());
     assert_eq!(10, config.db_conf().unwrap().db_pool_size());
     assert_eq!(10000, config.db_conf().unwrap().db_timeout());

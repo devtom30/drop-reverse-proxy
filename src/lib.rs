@@ -851,6 +851,7 @@ pub struct DbConf {
     db_host: String,
     db_port: u16,
     db_name: String,
+    db_user: String,
     db_password: String,
     db_pool_size: u32,
     db_timeout: u64
@@ -868,6 +869,8 @@ impl DbConf {
     pub fn db_name(&self) -> &str {
         &self.db_name
     }
+    
+    pub fn db_user(&self) -> &str { &self.db_user }
 
     pub fn db_password(&self) -> &str {
         &self.db_password
