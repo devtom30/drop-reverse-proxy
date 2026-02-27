@@ -8,6 +8,7 @@ import_path = "/drop/import"
 db_host = "localhost"
 db_port = 5432
 db_name = "drop_of_culture"
+db_user = "drop_of_culture"
 db_password = "drop_of_culture"
 db_pool_size = 10
 db_timeout = 10000
