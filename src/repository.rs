@@ -4,6 +4,7 @@ use std::sync::Arc;
 pub mod drop;
 pub mod artist;
 pub mod playlist;
+pub mod tag;
 
 pub trait Entity {
     fn id(&self) -> String;
@@ -68,6 +69,7 @@ pub enum RepoType {
     Artist(std::sync::Arc<crate::repository::artist::ArtistRepo>),
     Drop(std::sync::Arc<crate::repository::drop::DropRepo>),
     Playlist(std::sync::Arc<crate::repository::playlist::PlaylistRepo>),
+    Tag(std::sync::Arc<crate::repository::tag::TagRepo>),
 }
 
 

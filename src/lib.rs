@@ -314,10 +314,12 @@ async fn tag_guard(
     next: Next
 ) -> Response {
     println!("connect info ip {:#?}", connect_info.ip());
+    // check if IP is banned
     if !check_ip(connect_info.ip(), &state.ip_repo, state.conf.max_attempts) {
         increment_ip_nb_bad_attempts(&connect_info.ip(), &state.ip_repo);
         return AppError::Unauthorized.into_response();
     }
+    // check if tag exists
     let path = req.uri().path();
     if let Some(tag) = extract_tag_from_path(path) {
         if check_tag(tag.as_str(), state.tag_repo) {
